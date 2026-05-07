@@ -54,4 +54,12 @@ export enum IPCChannels {
   CONVERSATION_DELETE = 'conversation:delete',
   CONVERSATION_RENAME = 'conversation:rename',
   CONVERSATION_CHAT = 'conversation:chat',
+
+  // Streaming 相关
+  CONVERSATION_STREAM_CHUNK = 'conversation:stream-chunk',
+  CONVERSATION_STREAM_END = 'conversation:stream-end',
+  CONVERSATION_STREAM_ERROR = 'conversation:stream-error',
+
+  // Debug 相关
+  DEBUG_MODEL_CALL = 'debug:model-call',
 }

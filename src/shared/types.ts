@@ -122,3 +122,39 @@ export interface DailyReport {
   stats: string;
   generatedAt: string;
 }
+
+// Streaming 相关
+export interface StreamChunk {
+  conversationId: string;
+  content: string;
+}
+
+export interface StreamEnd {
+  conversationId: string;
+  fullContent: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+}
+
+export interface StreamError {
+  conversationId: string;
+  error: string;
+}
+
+// Debug 相关
+export interface DebugModelCall {
+  type: 'request' | 'response' | 'chunk' | 'error';
+  timestamp: number;
+  data: {
+    provider?: string;
+    model?: string;
+    messages?: Array<{ role: string; content: string }>;
+    content?: string;
+    usage?: Record<string, any>;
+    error?: string;
+    duration?: number;
+  };
+}
