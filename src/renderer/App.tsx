@@ -45,7 +45,13 @@ interface ElectronAPI {
     messages: (conversationId: string) => Promise<any[]>;
     delete: (conversationId: string) => Promise<void>;
     rename: (conversationId: string, title: string) => Promise<void>;
-    chat: (conversationId: string, agentId: string, message: string, model?: string) => Promise<string>;
+    chat: (conversationId: string, agentId: string, message: string, model?: string) => void;
+    onStreamChunk: (callback: (data: any) => void) => () => void;
+    onStreamEnd: (callback: (data: any) => void) => () => void;
+    onStreamError: (callback: (data: any) => void) => () => void;
+  };
+  debug: {
+    onModelCall: (callback: (data: any) => void) => () => void;
   };
 }
 

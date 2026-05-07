@@ -304,29 +304,34 @@ export default function AgentChat() {
     });
 
     const removeEnd = window.electronAPI.conversations.onStreamEnd((data) => {
-      if (data.conversationId !== convId) return;
-      setIsLoading(false);
+      // Always clean up listeners, even if conversation switched
       removeChunk();
       removeEnd();
       removeError();
+      if (data.conversationId !== convId) return;
+      setIsLoading(false);
       // Refresh conversation list to get updated title/timestamp
       loadConversations();
     });
 
     const removeError = window.electronAPI.conversations.onStreamError((data) => {
+      // Always clean up listeners, even if conversation switched
+      removeChunk();
+      removeEnd();
+      removeError();
       if (data.conversationId !== convId) return;
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last && last.role === 'assistant') {
-          updated[updated.length - 1] = { ...last, content: `Error: ${data.error}` };
+        if (last && last.role === 'assistant' && !last.content.startsWith('Error:')) {
+          updated[updated.length - 1] = {
+            ...last,
+            content: last.content ? `${last.content}\n\nError: ${data.error}` : `Error: ${data.error}`,
+          };
         }
         return updated;
       });
       setIsLoading(false);
-      removeChunk();
-      removeEnd();
-      removeError();
     });
 
     // Send the message (fire-and-forget, response comes via listeners)
