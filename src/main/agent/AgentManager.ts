@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { Agent, AgentConfig, ChatMessage, Conversation } from '../../shared/types';
+import { IPCChannels } from '../../shared/ipc-channels';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
@@ -363,6 +364,108 @@ You have access to:
     } catch (error) {
       Logger.error(`Conversation chat failed:`, error);
       throw error;
+    }
+  }
+
+  async chatInConversationStream(
+    conversationId: string,
+    agentId: string,
+    userMessage: string,
+    model: string | undefined,
+    webContents: Electron.WebContents
+  ): Promise<void> {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      webContents.send(IPCChannels.CONVERSATION_STREAM_ERROR, {
+        conversationId,
+        error: `Agent not found: ${agentId}`,
+      });
+      return;
+    }
+
+    const db = getDatabase();
+
+    // Auto-generate title from first user message
+    const existingMessages = db.prepare(
+      'SELECT COUNT(*) as count FROM chat_messages WHERE conversation_id = ?'
+    ).get(conversationId) as any;
+    if (existingMessages.count === 0) {
+      const title = userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : '');
+      db.prepare("UPDATE conversations SET title = ?, agent_id = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(title, agentId, conversationId);
+    }
+
+    // Save user message
+    db.prepare(`
+      INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'user', ?, ?)
+    `).run(agentId, userMessage, conversationId);
+
+    // Load recent history from DB (last 10 messages in this conversation)
+    const rows = db.prepare(`
+      SELECT role, content, timestamp FROM chat_messages
+      WHERE conversation_id = ? ORDER BY timestamp DESC LIMIT 10
+    `).all(conversationId) as any[];
+    const history: ChatMessage[] = rows.reverse().map(r => ({
+      role: r.role,
+      content: r.content,
+      timestamp: r.timestamp
+    }));
+
+    const systemContent =
+      agent.name === 'Daily Reporter'
+        ? (this.configManager.get('dailyReporterSystemPrompt') as string | undefined)?.trim() ||
+          agent.systemPrompt
+        : agent.systemPrompt;
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: systemContent },
+      ...history
+    ];
+
+    try {
+      const providerId = this.llmManager.getDefaultProviderId();
+      if (!providerId) {
+        throw new Error('No LLM providers configured');
+      }
+
+      const result = await this.llmManager.chatStream(
+        providerId,
+        messages,
+        model,
+        // onChunk: push to renderer
+        (text: string) => {
+          webContents.send(IPCChannels.CONVERSATION_STREAM_CHUNK, {
+            conversationId,
+            content: text,
+          });
+        },
+        // onDebug: push debug event to renderer
+        (event) => {
+          webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
+        }
+      );
+
+      // Save assistant response
+      db.prepare(`
+        INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'assistant', ?, ?)
+      `).run(agentId, result.fullContent, conversationId);
+
+      // Bump conversation updated_at
+      db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
+
+      // Send stream end
+      webContents.send(IPCChannels.CONVERSATION_STREAM_END, {
+        conversationId,
+        fullContent: result.fullContent,
+        usage: result.usage,
+      });
+
+    } catch (error) {
+      Logger.error(`Conversation streaming chat failed:`, error);
+      webContents.send(IPCChannels.CONVERSATION_STREAM_ERROR, {
+        conversationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   }
 }
