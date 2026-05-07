@@ -299,7 +299,7 @@ You have access to:
     db.prepare("UPDATE conversations SET title = ?, updated_at = datetime('now') WHERE id = ?").run(title, conversationId);
   }
 
-  private prepareConversationMessages(conversationId: string, agentId: string, userMessage: string): { agent: Agent; messages: ChatMessage[] } {
+  private buildConversationContext(conversationId: string, agentId: string, userMessage: string): ChatMessage[] {
     const agent = this.agents.get(agentId);
     if (!agent) {
       throw new Error(`Agent not found: ${agentId}`);
@@ -344,11 +344,11 @@ You have access to:
       ...history
     ];
 
-    return { agent, messages };
+    return messages;
   }
 
   async chatInConversation(conversationId: string, agentId: string, userMessage: string, model?: string): Promise<string> {
-    const { messages } = this.prepareConversationMessages(conversationId, agentId, userMessage);
+    const messages = this.buildConversationContext(conversationId, agentId, userMessage);
     const db = getDatabase();
 
     try {
@@ -383,8 +383,7 @@ You have access to:
   ): Promise<void> {
     let messages: ChatMessage[];
     try {
-      const result = this.prepareConversationMessages(conversationId, agentId, userMessage);
-      messages = result.messages;
+      messages = this.buildConversationContext(conversationId, agentId, userMessage);
     } catch (error) {
       if (!webContents.isDestroyed()) {
         webContents.send(IPCChannels.CONVERSATION_STREAM_ERROR, {
