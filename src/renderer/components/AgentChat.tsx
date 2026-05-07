@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil, ChevronDown } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import hljs from 'highlight.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -38,6 +41,76 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
+}
+
+/** Parse <think&gt;...&lt;/think&gt; blocks from text, returning thinking content and the rest */
+function parseThinking(text: string): { thinking: string | null; content: string } {
+  const match = text.match(/^<think\s*>([\s\S]*?)<\/think>\s*\n?/);
+  if (!match) return { thinking: null, content: text };
+  return { thinking: match[1].trim(), content: text.slice(match[0].length) };
+}
+
+/** Single message bubble — extracted so we can memo the thinking parse */
+function MessageBubble({ message }: { message: Message }) {
+  const { thinking, content } = useMemo(() => parseThinking(message.content), [message.content]);
+  const isUser = message.role === 'user';
+
+  return (
+    <div className={cn('flex items-start gap-3', isUser ? 'flex-row-reverse' : '')}>
+      <div className={cn('p-2 rounded-lg', isUser ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
+        {isUser ? <User size={20} /> : <Bot size={20} />}
+      </div>
+      <div
+        className={cn(
+          'max-w-2xl p-4 rounded-lg',
+          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
+        )}
+      >
+        {/* Thinking chain — collapsible */}
+        {thinking && (
+          <details className="mb-3 group">
+            <summary className="flex items-center gap-1 cursor-pointer text-sm text-muted-foreground hover:text-foreground select-none">
+              <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+              <span className="font-medium">Thinking...</span>
+            </summary>
+            <div className="mt-2 pl-3 border-l-2 border-border text-sm text-muted-foreground whitespace-pre-wrap">
+              {thinking}
+            </div>
+          </details>
+        )}
+
+        {/* Main content */}
+        {isUser ? (
+          <div className="whitespace-pre-wrap">{content}</div>
+        ) : (
+          <div className="markdown prose prose-sm max-w-none dark:prose-invert">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  const codeStr = String(children).replace(/\n$/, '');
+                  if (match) {
+                    return (
+                      <code
+                        className={className}
+                        dangerouslySetInnerHTML={{
+                          __html: hljs.highlight(codeStr, { language: match[1] }).value,
+                        }}
+                      />
+                    );
+                  }
+                  return <code className={className} {...props}>{children}</code>;
+                },
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function AgentChat() {
@@ -304,34 +377,7 @@ export default function AgentChat() {
               </div>
             ) : (
               messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={cn(
-                    'flex items-start gap-3',
-                    message.role === 'user' ? 'flex-row-reverse' : ''
-                  )}
-                >
-                  <div
-                    className={cn(
-                      'p-2 rounded-lg',
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
-                    )}
-                  >
-                    {message.role === 'user' ? <User size={20} /> : <Bot size={20} />}
-                  </div>
-                  <div
-                    className={cn(
-                      'max-w-2xl p-4 rounded-lg',
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-card'
-                    )}
-                  >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  </div>
-                </div>
+                <MessageBubble key={index} message={message} />
               ))
             )}
             {isLoading && (
@@ -339,7 +385,7 @@ export default function AgentChat() {
                 <div className="p-2 rounded-lg bg-muted">
                   <Bot size={20} />
                 </div>
-                <div className="bg-card px-4 py-2 rounded-lg">
+                <div className="bg-muted px-4 py-2 rounded-lg">
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
                     <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.1s]" />
