@@ -13,6 +13,8 @@ const DEFAULT_CONFIG: AppConfig = {
   workPaths: [] as string[],
   dailyReportTemplate: DEFAULT_DAILY_REPORT_TEMPLATE,
   dailyReporterSystemPrompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
+  dailyReportProvider: '',
+  dailyReportModel: '',
   plugins: {},
   agents: [],
   llmProviders: []

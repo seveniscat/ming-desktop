@@ -1,11 +1,12 @@
 import { EventEmitter } from 'events';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { Plugin, PluginExecutionResult, PluginConfig } from '../../shared/types';
-import { DEFAULT_DAILY_REPORT_TEMPLATE } from '../../shared/dailyReportDefaults';
+import { Plugin, PluginExecutionResult, PluginConfig, ChatMessage } from '../../shared/types';
+import { DEFAULT_DAILY_REPORT_TEMPLATE, DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { ExecutorService } from '../services/ExecutorService';
 import { ConfigManager } from '../services/ConfigManager';
+import { LLMProviderManager } from '../llm/LLMProviderManager';
 
 export class PluginManager extends EventEmitter {
   private plugins: Map<string, Plugin> = new Map();
@@ -14,7 +15,8 @@ export class PluginManager extends EventEmitter {
 
   constructor(
     private configManager: ConfigManager,
-    private executorService?: ExecutorService
+    private executorService?: ExecutorService,
+    private llmManager?: LLMProviderManager
   ) {
     super();
     this.pluginDir = path.join(process.env.HOME || '', '.hermes-desktop', 'plugins');
@@ -271,6 +273,19 @@ export class PluginManager extends EventEmitter {
       }
     }
 
+    // 尝试用 LLM 生成总结性日报
+    if (commits.length > 0) {
+      const dateRange = params.sinceDate
+        ? `${params.sinceDate} ~ ${params.untilDate || '至今'}`
+        : params.timeRange || 'today';
+
+      const llmReport = await this.generateReportWithLLM(commits, dateRange);
+      if (llmReport) {
+        reportContent = llmReport;
+      }
+      // LLM 失败时保留模板填充的 reportContent
+    }
+
     return {
       success: true,
       data: {
@@ -281,6 +296,65 @@ export class PluginManager extends EventEmitter {
       },
       logs: [result.stdout]
     };
+  }
+
+  private async generateReportWithLLM(commits: any[], dateRange: string): Promise<string | null> {
+    if (!this.llmManager) {
+      Logger.warn('LLM manager not available, skipping LLM report generation');
+      return null;
+    }
+
+    // 优先使用日报专用的 provider/model 配置，否则回退到全局默认
+    const configuredProvider = this.configManager.get('dailyReportProvider') as string | undefined;
+    const configuredModel = this.configManager.get('dailyReportModel') as string | undefined;
+
+    let providerId = configuredProvider && configuredProvider.trim()
+      ? configuredProvider.trim()
+      : null;
+
+    if (!providerId) {
+      providerId = this.llmManager.getDefaultProviderId();
+    }
+
+    if (!providerId) {
+      Logger.warn('No LLM provider available for daily report');
+      return null;
+    }
+
+    // 按仓库分组构造提交摘要
+    const byRepo: Record<string, any[]> = {};
+    for (const c of commits) {
+      if (!byRepo[c.repo]) byRepo[c.repo] = [];
+      byRepo[c.repo].push(c);
+    }
+
+    let commitsText = '';
+    for (const [repo, repoCommits] of Object.entries(byRepo)) {
+      commitsText += `\n### ${repo}\n`;
+      for (const c of repoCommits) {
+        commitsText += `- ${c.message}\n`;
+      }
+    }
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: `以下是 ${dateRange} 的 Git 提交记录，请整理为一份中文工作日报。按项目分类，直接罗列完成的工作事项，不需要展示提交次数、代码变更行数等统计信息。\n\n提交记录：${commitsText}`
+      }
+    ];
+
+    try {
+      Logger.info(`Generating report with LLM (provider: ${providerId}, model: ${configuredModel || 'default'})`);
+      let report = await this.llmManager.chat(providerId, messages, configuredModel || undefined);
+      // 去除思考过程标签
+      report = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      Logger.info('LLM report generation succeeded');
+      return report;
+    } catch (error) {
+      Logger.error('LLM report generation failed:', error);
+      return null;
+    }
   }
 
   private async executeGenericPlugin(plugin: Plugin, params: any): Promise<PluginExecutionResult> {

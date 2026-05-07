@@ -89,6 +89,10 @@ export interface AppConfig {
   dailyReportTemplate?: string;
   /** Daily Reporter Agent 的系统提示词 */
   dailyReporterSystemPrompt?: string;
+  /** 日报生成使用的 LLM Provider ID */
+  dailyReportProvider?: string;
+  /** 日报生成使用的模型名称 */
+  dailyReportModel?: string;
   plugins: Record<string, PluginConfig>;
   agents: Agent[];
   llmProviders: LLMProvider[];

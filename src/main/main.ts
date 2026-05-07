@@ -71,7 +71,7 @@ async function initializeServices(): Promise<void> {
   await executorService.initialize();
 
   // 初始化插件管理器
-  pluginManager = new PluginManager(configManager, executorService);
+  pluginManager = new PluginManager(configManager, executorService, llmManager);
   await pluginManager.initialize();
 
   // 初始化 Agent 管理器
