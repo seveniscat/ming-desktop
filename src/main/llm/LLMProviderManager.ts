@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMProvider, LLMProviderConfig, ChatMessage } from '../../shared/types';
+import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ToolCall } from '../../shared/types';
 import { Logger } from '../utils/Logger';
 import { ConfigManager } from '../services/ConfigManager';
 import { getDatabase } from '../database/connection';
@@ -167,7 +167,7 @@ export class LLMProviderManager extends EventEmitter {
     }
   }
 
-  async chat(providerId: string, messages: ChatMessage[], model?: string): Promise<string> {
+  async chat(providerId: string, messages: ChatMessage[], model?: string, tools?: ToolDefinition[]): Promise<string | { toolCalls: ToolCall[] }> {
     const provider = this.providers.get(providerId);
     if (!provider) {
       throw new Error(`Provider not found: ${providerId}`);
@@ -180,9 +180,9 @@ export class LLMProviderManager extends EventEmitter {
 
     try {
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
-        return await this.chatWithOpenAI(client as OpenAI, provider, messages, model);
+        return await this.chatWithOpenAI(client as OpenAI, provider, messages, model, tools);
       } else if (provider.type === 'anthropic') {
-        return await this.chatWithAnthropic(client as Anthropic, provider, messages, model);
+        return await this.chatWithAnthropic(client as Anthropic, provider, messages, model, tools);
       } else {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
@@ -386,9 +386,10 @@ export class LLMProviderManager extends EventEmitter {
     client: OpenAI,
     provider: LLMProvider,
     messages: ChatMessage[],
-    model?: string
-  ): Promise<string> {
-    const response = await client.chat.completions.create({
+    model?: string,
+    tools?: ToolDefinition[]
+  ): Promise<string | { toolCalls: ToolCall[] }> {
+    const createOptions: any = {
       model: model || provider.models[0] || 'gpt-4',
       messages: messages.map(m => ({
         role: m.role,
@@ -396,9 +397,29 @@ export class LLMProviderManager extends EventEmitter {
       })),
       temperature: 0.7,
       max_tokens: 2048
-    });
+    };
+
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools;
+    }
+
+    const response = await client.chat.completions.create(createOptions);
 
     const msg = response.choices[0]?.message;
+
+    // Handle tool_calls if present
+    if (msg?.tool_calls && msg.tool_calls.length > 0) {
+      const toolCalls: ToolCall[] = msg.tool_calls.map(tc => ({
+        id: tc.id,
+        type: 'function' as const,
+        function: {
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        },
+      }));
+      return { toolCalls };
+    }
+
     const content = msg?.content || '';
     // Some providers (DeepSeek, Qwen) return reasoning in a separate field
     const reasoning = (msg as any)?.reasoning_content;
@@ -412,9 +433,10 @@ export class LLMProviderManager extends EventEmitter {
     client: Anthropic,
     provider: LLMProvider,
     messages: ChatMessage[],
-    model?: string
-  ): Promise<string> {
-    const response = await client.messages.create({
+    model?: string,
+    tools?: ToolDefinition[]
+  ): Promise<string | { toolCalls: ToolCall[] }> {
+    const createOptions: any = {
       model: model || provider.models[0] || 'claude-3-opus-20240229',
       max_tokens: 2048,
       messages: messages
@@ -424,7 +446,31 @@ export class LLMProviderManager extends EventEmitter {
           content: m.content
         })),
       system: messages.find(m => m.role === 'system')?.content || ''
-    });
+    };
+
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+    }
+
+    const response = await client.messages.create(createOptions);
+
+    // Handle tool_use content blocks if present
+    const toolUseBlocks = response.content.filter((block: any) => block.type === 'tool_use');
+    if (toolUseBlocks.length > 0) {
+      const toolCalls: ToolCall[] = toolUseBlocks.map((block: any) => ({
+        id: block.id,
+        type: 'function' as const,
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      }));
+      return { toolCalls };
+    }
 
     // Check for thinking blocks (Anthropic extended thinking)
     const parts = response.content as Array<{ type: string; text?: string; thinking?: string }>;

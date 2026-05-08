@@ -148,6 +148,29 @@ export interface StreamError {
   error: string;
 }
 
+// Tool Calling 相关类型
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, any>;
+      required?: string[];
+    };
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 // Debug 相关
 export interface DebugModelCall {
   type: 'request' | 'response' | 'chunk' | 'error';
