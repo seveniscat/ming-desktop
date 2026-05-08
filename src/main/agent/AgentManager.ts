@@ -60,35 +60,23 @@ export class AgentManager extends EventEmitter {
       {
         name: 'Code Assistant',
         description: 'Help with coding, debugging, and code reviews',
-        model: 'gpt-4',
-        systemPrompt: `You are a helpful coding assistant. You help users write, debug, and review code.
-You have access to various tools including:
-- Git operations
-- File system operations
-- Code analysis tools
-- Documentation search
-
-When appropriate, use these tools to help users more effectively.`,
-        tools: ['git', 'file-system', 'code-analysis']
+        model: '',
+        systemPrompt: `You are a helpful coding assistant. You help users write, debug, and review code.`,
+        tools: []
       },
       {
         name: 'Daily Reporter',
         description: 'Generate daily work reports from Git commits',
-        model: 'gpt-4',
+        model: '',
         systemPrompt: dailyReporterPrompt,
-        tools: ['daily-report', 'git']
+        tools: ['daily-report']
       },
       {
         name: 'Research Assistant',
         description: 'Help with research, documentation, and knowledge gathering',
-        model: 'gpt-4',
-        systemPrompt: `You are a research assistant. You help users gather information, research topics, and create documentation.
-You have access to:
-- Web search
-- Documentation search
-- Academic paper search (arXiv)
-- Note-taking tools`,
-        tools: ['web-search', 'arxiv', 'notes']
+        model: '',
+        systemPrompt: `You are a research assistant. You help users gather information, research topics, and create documentation.`,
+        tools: []
       }
     ];
 
