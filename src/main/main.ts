@@ -2,18 +2,18 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { IPCChannels } from '../shared/ipc-channels';
-import { PluginManager } from './plugins/PluginManager';
 import { AgentManager } from './agent/AgentManager';
 import { LLMProviderManager } from './llm/LLMProviderManager';
 import { ExecutorService } from './services/ExecutorService';
 import { ConfigManager } from './services/ConfigManager';
+import { ToolExecutor } from './tools/ToolExecutor';
+import { createDailyReportTool } from './tools/dailyReportTool';
 import { Logger } from './utils/Logger';
 import { initializeDatabase, closeDatabase } from './database/connection';
 import { runMigrations } from './database/schema';
 import { migrateFromStore } from './database/migrate-from-store';
 
 let mainWindow: BrowserWindow | null = null;
-let pluginManager: PluginManager;
 let agentManager: AgentManager;
 let llmManager: LLMProviderManager;
 let executorService: ExecutorService;
@@ -70,27 +70,18 @@ async function initializeServices(): Promise<void> {
   executorService = new ExecutorService(configManager);
   await executorService.initialize();
 
-  // 初始化插件管理器
-  pluginManager = new PluginManager(configManager, executorService, llmManager);
-  await pluginManager.initialize();
+  // 初始化 Tool Executor
+  const toolExecutor = new ToolExecutor();
+  toolExecutor.register(createDailyReportTool(configManager, executorService));
 
   // 初始化 Agent 管理器
-  agentManager = new AgentManager(configManager, llmManager, pluginManager);
+  agentManager = new AgentManager(configManager, llmManager, toolExecutor);
   await agentManager.initialize();
 
   Logger.info('All services initialized successfully');
 }
 
 function setupIPCHandlers(): void {
-  // 插件相关
-  ipcMain.handle(IPCChannels.PLUGIN_LIST, async () => {
-    return pluginManager.listPlugins();
-  });
-
-  ipcMain.handle(IPCChannels.PLUGIN_EXECUTE, async (_, pluginId: string, params: any) => {
-    return pluginManager.executePlugin(pluginId, params);
-  });
-
   // Agent 相关
   ipcMain.handle(IPCChannels.AGENT_CREATE, async (_, config: any) => {
     return agentManager.createAgent(config);

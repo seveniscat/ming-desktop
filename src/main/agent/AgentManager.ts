@@ -5,7 +5,7 @@ import { IPCChannels } from '../../shared/ipc-channels';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
-import { PluginManager } from '../plugins/PluginManager';
+import { ToolExecutor } from '../tools/ToolExecutor';
 import { ConfigManager } from '../services/ConfigManager';
 import { getDatabase } from '../database/connection';
 
@@ -15,7 +15,7 @@ export class AgentManager extends EventEmitter {
   constructor(
     private configManager: ConfigManager,
     private llmManager: LLMProviderManager,
-    private pluginManager: PluginManager
+    private toolExecutor: ToolExecutor
   ) {
     super();
   }
@@ -146,11 +146,7 @@ You have access to:
       timestamp: r.timestamp
     }));
 
-    const systemContent =
-      agent.name === 'Daily Reporter'
-        ? (this.configManager.get('dailyReporterSystemPrompt') as string | undefined)?.trim() ||
-          agent.systemPrompt
-        : agent.systemPrompt;
+    const systemContent = agent.systemPrompt;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
@@ -333,11 +329,7 @@ You have access to:
       timestamp: r.timestamp
     }));
 
-    const systemContent =
-      agent.name === 'Daily Reporter'
-        ? (this.configManager.get('dailyReporterSystemPrompt') as string | undefined)?.trim() ||
-          agent.systemPrompt
-        : agent.systemPrompt;
+    const systemContent = agent.systemPrompt;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
@@ -394,6 +386,8 @@ You have access to:
       return;
     }
 
+    const agent = this.agents.get(agentId);
+    const toolDefs = agent ? this.toolExecutor.getToolsForAgent(agent.tools) : [];
     const db = getDatabase();
 
     try {
@@ -402,44 +396,110 @@ You have access to:
         throw new Error('No LLM providers configured');
       }
 
-      const result = await this.llmManager.chatStream(
-        providerId,
-        messages,
-        model,
-        // onChunk: push to renderer
-        (text: string) => {
-          if (!webContents.isDestroyed()) {
-            webContents.send(IPCChannels.CONVERSATION_STREAM_CHUNK, {
-              conversationId,
-              content: text,
-            });
+      const resolvedModel = model || undefined;
+
+      // Tool calling loop (non-streaming)
+      let toolRounds = 0;
+      const MAX_TOOL_ROUNDS = 5;
+
+      if (toolDefs.length > 0) {
+        while (toolRounds < MAX_TOOL_ROUNDS) {
+          const result = await this.llmManager.chat(providerId, messages, resolvedModel, toolDefs);
+
+          if (typeof result === 'string') {
+            // LLM returned text — no more tool calls.
+            // Append text to messages for final streaming step.
+            messages.push({ role: 'assistant', content: result });
+            break;
           }
-        },
-        // onDebug: push debug event to renderer
-        (event) => {
-          if (!webContents.isDestroyed()) {
-            webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
+
+          // LLM wants to call tools
+          const { toolCalls } = result;
+
+          // Add assistant message with tool calls to conversation
+          messages.push({
+            role: 'assistant',
+            content: `[Calling tools: ${toolCalls.map(tc => tc.function.name).join(', ')}]`
+          });
+
+          // Execute each tool call
+          for (const toolCall of toolCalls) {
+            try {
+              const toolResult = await this.toolExecutor.execute(toolCall);
+              messages.push({
+                role: 'user',
+                content: `Tool ${toolCall.function.name} result:\n${toolResult}`
+              });
+            } catch (error) {
+              const errMsg = error instanceof Error ? error.message : 'Tool execution failed';
+              messages.push({
+                role: 'user',
+                content: `Tool ${toolCall.function.name} error: ${errMsg}`
+              });
+            }
           }
+
+          toolRounds++;
         }
-      );
-
-      // Save assistant response
-      db.prepare(`
-        INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'assistant', ?, ?)
-      `).run(agentId, result.fullContent, conversationId);
-
-      // Bump conversation updated_at
-      db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
-
-      // Send stream end
-      if (!webContents.isDestroyed()) {
-        webContents.send(IPCChannels.CONVERSATION_STREAM_END, {
-          conversationId,
-          fullContent: result.fullContent,
-          usage: result.usage,
-        });
       }
 
+      // Final streaming call to get the actual response
+      const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
+
+      if (lastAssistant && toolDefs.length > 0 && toolRounds > 0) {
+        // We already have the final text from the tool loop.
+        // Re-call with streaming for the UI experience (using messages without the last assistant msg)
+        const streamMessages = messages.slice(0, -1);
+        const streamResult = await this.llmManager.chatStream(
+          providerId, streamMessages, resolvedModel,
+          (text: string) => {
+            if (!webContents.isDestroyed()) {
+              webContents.send(IPCChannels.CONVERSATION_STREAM_CHUNK, { conversationId, content: text });
+            }
+          },
+          (event) => {
+            if (!webContents.isDestroyed()) {
+              webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
+            }
+          }
+        );
+
+        // Save the streamed response
+        db.prepare(`INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'assistant', ?, ?)`)
+          .run(agentId, streamResult.fullContent, conversationId);
+        db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
+
+        if (!webContents.isDestroyed()) {
+          webContents.send(IPCChannels.CONVERSATION_STREAM_END, {
+            conversationId, fullContent: streamResult.fullContent, usage: streamResult.usage,
+          });
+        }
+      } else {
+        // No tool loop happened — original streaming behavior
+        const streamResult = await this.llmManager.chatStream(
+          providerId, messages, resolvedModel,
+          (text: string) => {
+            if (!webContents.isDestroyed()) {
+              webContents.send(IPCChannels.CONVERSATION_STREAM_CHUNK, { conversationId, content: text });
+            }
+          },
+          (event) => {
+            if (!webContents.isDestroyed()) {
+              webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
+            }
+          }
+        );
+
+        db.prepare(`INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'assistant', ?, ?)`)
+          .run(agentId, streamResult.fullContent, conversationId);
+        db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
+
+        if (!webContents.isDestroyed()) {
+          webContents.send(IPCChannels.CONVERSATION_STREAM_END, {
+            conversationId, fullContent: streamResult.fullContent, usage: streamResult.usage,
+          });
+        }
+      }
     } catch (error) {
       Logger.error(`Conversation streaming chat failed:`, error);
       if (!webContents.isDestroyed()) {
