@@ -1,4 +1,4 @@
-import { LayoutDashboard, Puzzle, MessageSquare, Settings, Sun, Moon, Monitor } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Settings, Sun, Moon, Monitor } from 'lucide-react';
 import { useTheme } from '../App';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
@@ -14,12 +14,9 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'plugins', label: 'Plugins', icon: Puzzle },
     { id: 'agents', label: 'Agents', icon: MessageSquare },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
-
-  const themeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
 
   const cycleTheme = () => {
     const next = theme === 'dark' ? 'light' : theme === 'light' ? 'auto' : 'dark';

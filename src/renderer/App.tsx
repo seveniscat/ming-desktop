@@ -1,16 +1,11 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import PluginManager from './components/PluginManager';
 import AgentChat from './components/AgentChat';
 import Settings from './components/Settings';
 import { themePresets, defaultThemeName, applyThemePreset, type ThemePreset } from './lib/themes';
 
 interface ElectronAPI {
-  plugins: {
-    list: () => Promise<any[]>;
-    execute: (pluginId: string, params: any) => Promise<any>;
-  };
   agents: {
     create: (config: any) => Promise<string>;
     chat: (agentId: string, message: string) => Promise<string>;
@@ -210,7 +205,6 @@ function App() {
           {/* Content */}
           <div className="flex-1 overflow-hidden">
             {activeTab === 'dashboard' && <Dashboard />}
-            {activeTab === 'plugins' && <PluginManager />}
             {activeTab === 'agents' && <AgentChat />}
             {activeTab === 'settings' && <Settings />}
           </div>

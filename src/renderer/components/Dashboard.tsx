@@ -113,28 +113,9 @@ export default function Dashboard() {
         return;
       }
 
-      const result = await window.electronAPI.plugins.execute('daily-report', {
-        ...buildReportParams(),
-        repoPaths,
-      });
-
-      if (result.success) {
-        const s = result.data.stats;
-        if (s) {
-          setStats({ totalCommits: s.totalCommits || 0, totalRepos: s.totalRepos || 0, workHours: s.workHours || 0 });
-        }
-        const activeNames = new Set<string>();
-        const fetchedCommits = result.data.commits || [];
-        console.log('[fetchStats] commits count:', fetchedCommits.length);
-        setCommits(fetchedCommits);
-        for (const c of fetchedCommits) {
-          activeNames.add(c.repo);
-        }
-        setActiveRepoNames(activeNames);
-        if (result.data.report) {
-          setReportContent(result.data.report);
-        }
-      }
+      // TODO: Migrate to agent-based daily report generation via conversation API
+      // The daily-report functionality is now available as a tool in the Agent system
+      setReportContent(''); // reset until agent-based generation is wired up
     } catch {
       // silently fail
     } finally {
@@ -161,29 +142,8 @@ export default function Dashboard() {
         return;
       }
 
-      const result = await window.electronAPI.plugins.execute('daily-report', {
-        ...buildReportParams(),
-        repoPaths,
-        ...(onlyMine ? { filterByAuthor: 'zhangbing' } : {}),
-      });
-
-      if (result.success) {
-        const s = result.data.stats;
-        if (s) {
-          setStats({ totalCommits: s.totalCommits || 0, totalRepos: s.totalRepos || 0, workHours: s.workHours || 0 });
-        }
-        const activeNames = new Set<string>();
-        const fetchedCommits = result.data.commits || [];
-        setCommits(fetchedCommits);
-        for (const c of fetchedCommits) {
-          activeNames.add(c.repo);
-        }
-        setActiveRepoNames(activeNames);
-        if (result.data.report) {
-          setReportContent(result.data.report);
-        }
-        setActiveSheet(result.data.report ? 'report' : 'commits');
-      }
+      // TODO: Migrate to agent-based daily report generation via conversation API
+      // The daily-report functionality is now available as a tool in the Agent system
     } catch {
       // silently fail
     } finally {

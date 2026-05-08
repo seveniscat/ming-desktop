@@ -1,11 +1,5 @@
 // IPC 通道名称常量
 export enum IPCChannels {
-  // 插件相关
-  PLUGIN_LIST = 'plugin:list',
-  PLUGIN_EXECUTE = 'plugin:execute',
-  PLUGIN_INSTALL = 'plugin:install',
-  PLUGIN_UNINSTALL = 'plugin:uninstall',
-
   // Agent 相关
   AGENT_CREATE = 'agent:create',
   AGENT_CHAT = 'agent:chat',

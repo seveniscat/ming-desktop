@@ -3,13 +3,6 @@ import { IPCChannels } from '../shared/ipc-channels';
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
-  // 插件 API
-  plugins: {
-    list: () => ipcRenderer.invoke(IPCChannels.PLUGIN_LIST),
-    execute: (pluginId: string, params: any) =>
-      ipcRenderer.invoke(IPCChannels.PLUGIN_EXECUTE, pluginId, params),
-  },
-
   // Agent API
   agents: {
     create: (config: any) => ipcRenderer.invoke(IPCChannels.AGENT_CREATE, config),
@@ -102,10 +95,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 // 类型定义
 export interface ElectronAPI {
-  plugins: {
-    list: () => Promise<any[]>;
-    execute: (pluginId: string, params: any) => Promise<any>;
-  };
   agents: {
     create: (config: any) => Promise<string>;
     chat: (agentId: string, message: string) => Promise<string>;
