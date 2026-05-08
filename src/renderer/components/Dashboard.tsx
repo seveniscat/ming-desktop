@@ -52,6 +52,27 @@ export default function Dashboard() {
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
   const [copiedReport, setCopiedReport] = useState(false);
 
+  // Sort repos by activity: repos with commits first (sorted by date desc), then repos without commits
+  const sortedGitRepos = useMemo(() => {
+    const repoLastCommit = new Map<string, Date>();
+    commits.forEach(commit => {
+      const commitDate = new Date(commit.date);
+      const existing = repoLastCommit.get(commit.repo);
+      if (!existing || commitDate > existing) {
+        repoLastCommit.set(commit.repo, commitDate);
+      }
+    });
+
+    return [...gitRepos].sort((a, b) => {
+      const aDate = repoLastCommit.get(a.name);
+      const bDate = repoLastCommit.get(b.name);
+      if (aDate && bDate) return bDate.getTime() - aDate.getTime();
+      if (aDate) return -1;
+      if (bDate) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [gitRepos, commits]);
+
   const loadWorkPaths = useCallback(async () => {
     try {
       const paths = await window.electronAPI.config.get('workPaths');
@@ -544,29 +565,29 @@ export default function Dashboard() {
               </SheetDescription>
             </SheetHeader>
             <div className="mt-6">
-              {gitRepos.length === 0 ? (
+              {sortedGitRepos.length === 0 ? (
                 <p className="text-sm py-2 text-muted-foreground">
                   No git repositories found in configured work paths.
                 </p>
               ) : (
                 <div className="grid grid-cols-1 gap-2">
-                  {gitRepos.map((repo, i) => {
-                    const isActive = activeRepoNames.has(repo.name);
+                  {sortedGitRepos.map((repo, i) => {
+                    const hasCommits = commits.some(c => c.repo === repo.name);
                     return (
                       <div
                         key={i}
                         className={cn(
                           'flex items-center gap-2 p-2.5 rounded-lg text-sm border',
-                          isActive
+                          hasCommits
                             ? 'bg-primary/5 border-primary/30'
                             : 'bg-input border-border'
                         )}
                       >
                         <Folder size={14} className="text-muted-foreground flex-shrink-0" />
-                        <span className={cn('font-medium truncate', isActive ? 'text-foreground' : 'text-foreground/70')}>
+                        <span className={cn('font-medium truncate', hasCommits ? 'text-foreground' : 'text-foreground/70')}>
                           {repo.name}
                         </span>
-                        {isActive && (
+                        {hasCommits && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 flex-shrink-0">
                             <Activity size={10} className="mr-0.5" />
                             active
