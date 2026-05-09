@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Calendar as CalendarIcon, GitBranch, FileText, TrendingUp, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, Clock, Trash2, Bot, Settings, MessageSquare } from 'lucide-react';
+import { Calendar as CalendarIcon, GitBranch, FileText, TrendingUp, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, Clock, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -42,13 +42,6 @@ interface DailyReportRecord {
   created_at: string;
 }
 
-interface ActivityItem {
-  id: string;
-  type: 'report' | 'refresh' | 'navigate';
-  message: string;
-  time: Date;
-}
-
 interface DashboardProps {
   onNavigate?: (tab: string) => void;
 }
@@ -74,14 +67,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const [gitUser, setGitUser] = useState({ name: '', email: '' });
   const [reportHistory, setReportHistory] = useState<DailyReportRecord[]>([]);
   const [selectedReport, setSelectedReport] = useState<DailyReportRecord | null>(null);
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
-
-  const addActivity = useCallback((type: ActivityItem['type'], message: string) => {
-    setActivities(prev => [
-      { id: `${Date.now()}-${Math.random()}`, type, message, time: new Date() },
-      ...prev,
-    ].slice(0, 20));
-  }, []);
 
   // Sort repos by activity: repos with commits first (sorted by date desc), then repos without commits
   const sortedGitRepos = useMemo(() => {
@@ -212,7 +197,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     setIsGenerating(true);
     setReportContent('');
     setActiveSheet('report');
-    addActivity('refresh', '开始生成工作日报...');
 
     try {
       // Create a conversation for this report
@@ -259,7 +243,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               reposCount: stats.totalRepos,
             });
             loadReportHistory();
-            addActivity('report', `日报已生成: ${title}`);
           } catch (e) {
             console.error('Failed to save report:', e);
           }
@@ -271,7 +254,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         unsubError();
         console.error('Report generation error:', data.error);
         setIsGenerating(false);
-        addActivity('report', `日报生成失败: ${data.error}`);
       });
 
       // Fire the chat — agent will call daily-report tool and format the response
@@ -289,7 +271,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       if (selectedReport?.id === id) {
         setSelectedReport(null);
       }
-      addActivity('report', '日报已删除');
     } catch (e) {
       console.error('Failed to delete report:', e);
     }
@@ -338,7 +319,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Workground</h1>
+            <h1 className="text-3xl font-bold text-foreground">WorkGround</h1>
           </div>
           <div className="flex items-center gap-2">
             <Select value={timeRange} onValueChange={setTimeRange}>
@@ -402,7 +383,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={() => { fetchStats(); addActivity('refresh', '刷新统计数据'); }}
+              onClick={() => fetchStats()}
               disabled={isRefreshing}
               title="Refresh"
             >
@@ -902,92 +883,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             </div>
           </CardHeader>
         </Card>
-
-        {/* Quick Actions and Recent Activity */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button
-                variant="secondary"
-                className="w-full justify-start gap-3"
-                onClick={() => {
-                  fetchStats();
-                  addActivity('refresh', '刷新了 Git 统计数据');
-                }}
-              >
-                <RefreshCw size={18} />
-                Refresh Git Stats
-              </Button>
-              <Button
-                variant="secondary"
-                className="w-full justify-start gap-3"
-                onClick={() => onNavigate?.('agents')}
-              >
-                <Bot size={18} />
-                Create New Agent
-              </Button>
-              <Button
-                variant="secondary"
-                className="w-full justify-start gap-3"
-                onClick={() => onNavigate?.('chat')}
-              >
-                <MessageSquare size={18} />
-                Open Chat
-              </Button>
-              <Button
-                variant="secondary"
-                className="w-full justify-start gap-3"
-                onClick={() => onNavigate?.('settings')}
-              >
-                <Settings size={18} />
-                Settings
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {activities.length === 0 ? (
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>No recent activity</span>
-                  </div>
-                </div>
-              ) : (
-                <ScrollArea className="h-48">
-                  <div className="space-y-2">
-                    {activities.map((activity) => (
-                      <div key={activity.id} className="flex items-start gap-2 text-sm">
-                        <div className={cn(
-                          'mt-0.5 p-1 rounded',
-                          activity.type === 'report' && 'bg-amber-500/10 text-amber-500',
-                          activity.type === 'refresh' && 'bg-blue-500/10 text-blue-500',
-                          activity.type === 'navigate' && 'bg-violet-500/10 text-violet-500',
-                        )}>
-                          {activity.type === 'report' && <FileText size={12} />}
-                          {activity.type === 'refresh' && <RefreshCw size={12} />}
-                          {activity.type === 'navigate' && <Activity size={12} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-foreground truncate">{activity.message}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {format(activity.time, 'HH:mm:ss')}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
