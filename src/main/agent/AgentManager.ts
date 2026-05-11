@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { Agent, AgentConfig, ChatMessage, Conversation } from '../../shared/types';
+import { Agent, AgentConfig, ChatMessage, Conversation, Skill } from '../../shared/types';
 import { IPCChannels } from '../../shared/ipc-channels';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
@@ -15,7 +15,8 @@ export class AgentManager extends EventEmitter {
   constructor(
     private configManager: ConfigManager,
     private llmManager: LLMProviderManager,
-    private toolExecutor: ToolExecutor
+    private toolExecutor: ToolExecutor,
+    private getEnabledSkills: () => Skill[]
   ) {
     super();
   }
@@ -35,6 +36,7 @@ export class AgentManager extends EventEmitter {
         model: row.model,
         systemPrompt: row.system_prompt,
         tools: JSON.parse(row.tools || '[]'),
+        skills: JSON.parse(row.skills || '[]'),
         enabled: !!row.enabled,
         isDefault: !!row.is_default,
         createdAt: row.created_at,
@@ -89,6 +91,9 @@ export class AgentManager extends EventEmitter {
       ...config,
       description: config.description ?? '',
       tools: config.tools ?? [],
+      skills: config.skills ?? [],
+      enabled: true,
+      isDefault: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -98,9 +103,19 @@ export class AgentManager extends EventEmitter {
     // Save to SQLite
     const db = getDatabase();
     db.prepare(`
-      INSERT INTO agents (id, name, description, model, system_prompt, tools, enabled, is_default)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(agent.id, agent.name, agent.description, agent.model, agent.systemPrompt, JSON.stringify(agent.tools), agent.enabled !== false ? 1 : 0, (agent as any).isDefault ? 1 : 0);
+      INSERT INTO agents (id, name, description, model, system_prompt, tools, skills, enabled, is_default)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent.id,
+      agent.name,
+      agent.description,
+      agent.model,
+      agent.systemPrompt,
+      JSON.stringify(agent.tools),
+      JSON.stringify(agent.skills),
+      agent.enabled !== false ? 1 : 0,
+      (agent as any).isDefault ? 1 : 0
+    );
 
     this.emit('agent-created', agent);
     Logger.info(`Agent created: ${agent.name}`);
@@ -132,7 +147,7 @@ export class AgentManager extends EventEmitter {
       timestamp: r.timestamp
     }));
 
-    const systemContent = agent.systemPrompt;
+    const systemContent = this.buildSystemContent(agent);
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
@@ -145,7 +160,7 @@ export class AgentManager extends EventEmitter {
         throw new Error('No LLM providers configured');
       }
 
-      const response = await this.llmManager.chat(providerId, messages);
+      const response = this.ensureTextResponse(await this.llmManager.chat(providerId, messages));
 
       // Save assistant response to DB
       db.prepare(`
@@ -188,16 +203,31 @@ export class AgentManager extends EventEmitter {
   async updateAgent(agentId: string, updates: Partial<Agent>): Promise<void> {
     const agent = this.agents.get(agentId);
     if (agent) {
-      const updated = { ...agent, ...updates, updatedAt: new Date().toISOString() };
+      const updated = {
+        ...agent,
+        ...updates,
+        tools: updates.tools ?? agent.tools,
+        skills: updates.skills ?? agent.skills,
+        updatedAt: new Date().toISOString(),
+      };
       this.agents.set(agentId, updated);
 
       // Update in SQLite
       const db = getDatabase();
       db.prepare(`
         UPDATE agents
-        SET name = ?, description = ?, model = ?, system_prompt = ?, tools = ?, enabled = ?, updated_at = datetime('now')
+        SET name = ?, description = ?, model = ?, system_prompt = ?, tools = ?, skills = ?, enabled = ?, updated_at = datetime('now')
         WHERE id = ?
-      `).run(updated.name, updated.description, updated.model, updated.systemPrompt, JSON.stringify(updated.tools), updated.enabled !== false ? 1 : 0, agentId);
+      `).run(
+        updated.name,
+        updated.description,
+        updated.model,
+        updated.systemPrompt,
+        JSON.stringify(updated.tools),
+        JSON.stringify(updated.skills),
+        updated.enabled !== false ? 1 : 0,
+        agentId
+      );
 
       this.emit('agent-updated', updated);
       Logger.info(`Agent updated: ${updated.name}`);
@@ -315,7 +345,7 @@ export class AgentManager extends EventEmitter {
       timestamp: r.timestamp
     }));
 
-    const systemContent = agent.systemPrompt;
+    const systemContent = this.buildSystemContent(agent);
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
@@ -323,6 +353,27 @@ export class AgentManager extends EventEmitter {
     ];
 
     return messages;
+  }
+
+  private buildSystemContent(agent: Agent): string {
+    const selectedSkills = this.getEnabledSkills().filter((skill) => agent.skills.includes(skill.id));
+    if (selectedSkills.length === 0) {
+      return agent.systemPrompt;
+    }
+
+    const skillContent = selectedSkills
+      .map((skill) => `Skill: ${skill.name}\n${skill.prompt}`)
+      .join('\n\n');
+
+    return `${agent.systemPrompt}\n\nEnabled skills:\n${skillContent}`;
+  }
+
+  private ensureTextResponse(response: string | { toolCalls: import('../../shared/types').ToolCall[] }): string {
+    if (typeof response === 'string') {
+      return response;
+    }
+
+    throw new Error('Unexpected tool call response in non-tool chat flow');
   }
 
   async chatInConversation(conversationId: string, agentId: string, userMessage: string, model?: string): Promise<string> {
@@ -335,7 +386,7 @@ export class AgentManager extends EventEmitter {
         throw new Error('No LLM providers configured');
       }
 
-      const response = await this.llmManager.chat(providerId, messages, model);
+      const response = this.ensureTextResponse(await this.llmManager.chat(providerId, messages, model));
 
       // Save assistant response
       db.prepare(`

@@ -51,6 +51,18 @@ export function runMigrations(): void {
       enabled INTEGER DEFAULT 1,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      prompt TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      source_path TEXT,
+      source_type TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Mark initial migration as applied
@@ -129,5 +141,51 @@ export function runMigrations(): void {
       // Column may already exist on fresh installs
     }
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration3Name);
+  }
+
+  // Migration: add skills table and skills column on agents
+  const migration4Name = 'add-skills';
+  const applied4 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration4Name);
+  if (!applied4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        prompt TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        source_path TEXT,
+        source_type TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+
+    try {
+      db.exec(`ALTER TABLE agents ADD COLUMN skills TEXT DEFAULT '[]'`);
+    } catch {
+      // Column may already exist on fresh installs
+    }
+
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration4Name);
+  }
+
+  // Migration: add local skill source metadata
+  const migration5Name = 'add-skill-source-metadata';
+  const applied5 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration5Name);
+  if (!applied5) {
+    try {
+      db.exec(`ALTER TABLE skills ADD COLUMN source_path TEXT`);
+    } catch {
+      // Column may already exist on fresh installs
+    }
+
+    try {
+      db.exec(`ALTER TABLE skills ADD COLUMN source_type TEXT`);
+    } catch {
+      // Column may already exist on fresh installs
+    }
+
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration5Name);
   }
 }

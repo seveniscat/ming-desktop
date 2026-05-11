@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, MessageSquare, Bot, Settings, Sun, Moon, Monitor, Home, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Bot, Settings, Sun, Moon, Monitor, Home, Search, PanelLeftClose, PanelLeft, Wrench } from 'lucide-react';
 import { useTheme } from '../App';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
@@ -24,6 +24,7 @@ export default function Sidebar({ activeTab, onTabChange, collapsed: controlledC
     { id: 'techstack', label: 'TechStack Analyzer', icon: Search },
     { id: 'chat', label: 'Chat', icon: MessageSquare },
     { id: 'agents', label: 'Agents', icon: Bot },
+    { id: 'skills', label: 'Skills', icon: Wrench },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

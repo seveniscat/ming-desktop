@@ -6,6 +6,9 @@ export interface Agent {
   model: string;
   systemPrompt: string;
   tools: string[];
+  skills: string[];
+  enabled?: boolean;
+  isDefault?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,6 +19,36 @@ export interface AgentConfig {
   model: string;
   systemPrompt: string;
   tools?: string[];
+  skills?: string[];
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  enabled: boolean;
+  sourcePath?: string;
+  sourceType?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillConfig {
+  name: string;
+  description?: string;
+  prompt: string;
+  enabled?: boolean;
+  sourcePath?: string;
+  sourceType?: string;
+}
+
+export interface SkillSyncResult {
+  total: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  skills: Skill[];
 }
 
 export interface ChatMessage {
@@ -57,11 +90,14 @@ export interface AppConfig {
   theme: 'light' | 'dark' | 'auto';
   language: string;
   autoUpdate: boolean;
+  colorTheme?: string;
   defaultLLMProvider?: string;
   workPaths: string[];
   /** 日报 Markdown 模板，占位符：{date} {total_commits} {total_repos} {work_hours} {commit_details} {stats} {generated_at} */
   dailyReportTemplate?: string;
+  plugins?: Record<string, unknown>;
   agents: Agent[];
+  skills: Skill[];
   llmProviders: LLMProvider[];
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Bot, Cpu } from 'lucide-react';
+import { Plus, Pencil, Trash2, Bot, Cpu, Sparkles, Wrench } from 'lucide-react';
+import type { Agent, Skill } from '../../shared/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
@@ -8,37 +9,39 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { cn } from '@/lib/utils';
 
-interface Agent {
-  id: string;
+interface AgentForm {
   name: string;
   description: string;
   model: string;
   systemPrompt: string;
-  tools: string[];
-  createdAt: string;
-  updatedAt: string;
+  tools: string;
+  skills: string[];
 }
 
-const emptyForm = {
+const emptyForm: AgentForm = {
   name: '',
   description: '',
   model: '',
   systemPrompt: '',
   tools: '',
+  skills: [],
 };
 
 export default function AgentManager() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<AgentForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState<any[]>([]);
 
   useEffect(() => {
     loadAgents();
     loadProviders();
+    loadSkills();
   }, []);
 
   const loadProviders = async () => {
@@ -50,19 +53,33 @@ export default function AgentManager() {
     }
   };
 
-  // Collect all enabled models from enabled providers
+  const loadSkills = async () => {
+    try {
+      const list = await window.electronAPI.skills.list();
+      setSkills(list || []);
+    } catch (error) {
+      console.error('Failed to load skills:', error);
+      setSkills([]);
+    }
+  };
+
   const availableModels = useMemo(() => {
     const models: { value: string; label: string }[] = [];
-    for (const p of providers.filter((p: any) => p.enabled)) {
+    for (const p of providers.filter((provider: any) => provider.enabled)) {
       const enabled = p.enabledModels?.length ? p.enabledModels : p.models || [];
-      for (const m of enabled) {
-        if (!models.some((x) => x.value === m)) {
-          models.push({ value: m, label: `${m} (${p.name})` });
+      for (const model of enabled) {
+        if (!models.some((item) => item.value === model)) {
+          models.push({ value: model, label: `${model} (${p.name})` });
         }
       }
     }
     return models;
   }, [providers]);
+
+  const skillNameMap = useMemo(
+    () => new Map(skills.map((skill) => [skill.id, skill.name])),
+    [skills]
+  );
 
   const loadAgents = async () => {
     try {
@@ -87,8 +104,18 @@ export default function AgentManager() {
       model: agent.model,
       systemPrompt: agent.systemPrompt,
       tools: agent.tools.join(', '),
+      skills: agent.skills || [],
     });
     setDialogOpen(true);
+  };
+
+  const toggleSkill = (skillId: string) => {
+    setForm((current) => ({
+      ...current,
+      skills: current.skills.includes(skillId)
+        ? current.skills.filter((id) => id !== skillId)
+        : [...current.skills, skillId],
+    }));
   };
 
   const handleSave = async () => {
@@ -96,28 +123,25 @@ export default function AgentManager() {
     try {
       const tools = form.tools
         .split(',')
-        .map((t) => t.trim())
+        .map((tool) => tool.trim())
         .filter(Boolean);
 
+      const payload = {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        model: form.model,
+        systemPrompt: form.systemPrompt.trim(),
+        tools,
+        skills: form.skills,
+      };
+
       if (editingId) {
-        await window.electronAPI.agents.update(editingId, {
-          name: form.name,
-          description: form.description,
-          model: form.model,
-          systemPrompt: form.systemPrompt,
-          tools,
-        });
+        await window.electronAPI.agents.update(editingId, payload);
       } else {
-        await window.electronAPI.agents.create({
-          name: form.name,
-          description: form.description,
-          model: form.model,
-          systemPrompt: form.systemPrompt,
-          tools,
-        });
+        await window.electronAPI.agents.create(payload);
       }
       setDialogOpen(false);
-      await loadAgents();
+      await Promise.all([loadAgents(), loadSkills()]);
     } catch (error) {
       console.error('Failed to save agent:', error);
     } finally {
@@ -137,12 +161,11 @@ export default function AgentManager() {
 
   return (
     <div className="h-full overflow-y-auto p-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
+      <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold mb-2 text-foreground">Agent 管理</h1>
-            <p className="text-muted-foreground">创建和管理你的 Agent</p>
+            <p className="text-muted-foreground">创建 Agent，并为它们绑定可复用的 skill</p>
           </div>
           <Button onClick={openCreate} className="flex items-center gap-2">
             <Plus size={18} />
@@ -150,7 +173,6 @@ export default function AgentManager() {
           </Button>
         </div>
 
-        {/* Agent Cards Grid */}
         {agents.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
@@ -159,7 +181,7 @@ export default function AgentManager() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {agents.map((agent) => (
               <Card key={agent.id}>
                 <CardHeader>
@@ -171,7 +193,7 @@ export default function AgentManager() {
                       <div className="min-w-0">
                         <CardTitle className="text-lg truncate">{agent.name}</CardTitle>
                         {agent.description && (
-                          <CardDescription className="mt-1 line-clamp-2">
+                          <CardDescription className="mt-1">
                             {agent.description}
                           </CardDescription>
                         )}
@@ -180,7 +202,7 @@ export default function AgentManager() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div className="flex items-center gap-2 text-sm">
                       <Cpu size={14} className="text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground">
@@ -189,12 +211,34 @@ export default function AgentManager() {
                     </div>
 
                     {agent.tools.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {agent.tools.map((tool) => (
-                          <Badge key={tool} variant="secondary" className="text-xs">
-                            {tool}
-                          </Badge>
-                        ))}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                          <Wrench size={12} />
+                          Tools
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {agent.tools.map((tool) => (
+                            <Badge key={tool} variant="secondary" className="text-xs">
+                              {tool}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {agent.skills.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                          <Sparkles size={12} />
+                          Skills
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {agent.skills.map((skillId) => (
+                            <Badge key={skillId} variant="outline" className="text-xs">
+                              {skillNameMap.get(skillId) || skillId}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -225,9 +269,8 @@ export default function AgentManager() {
           </div>
         )}
 
-        {/* Create / Edit Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editingId ? '编辑 Agent' : '创建 Agent'}</DialogTitle>
             </DialogHeader>
@@ -237,7 +280,7 @@ export default function AgentManager() {
                 <Label className="mb-2 block">名称</Label>
                 <Input
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
                   placeholder="Agent 名称"
                 />
               </div>
@@ -246,7 +289,7 @@ export default function AgentManager() {
                 <Label className="mb-2 block">描述</Label>
                 <Input
                   value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
                   placeholder="Agent 描述"
                 />
               </div>
@@ -255,16 +298,16 @@ export default function AgentManager() {
                 <Label className="mb-2 block">模型</Label>
                 <Select
                   value={form.model || '__default__'}
-                  onValueChange={(v) => setForm({ ...form, model: v === '__default__' ? '' : v })}
+                  onValueChange={(value) => setForm({ ...form, model: value === '__default__' ? '' : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="留空使用 Provider 默认" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__default__">Provider 默认</SelectItem>
-                    {availableModels.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        {m.label}
+                    {availableModels.map((model) => (
+                      <SelectItem key={model.value} value={model.value}>
+                        {model.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -275,7 +318,7 @@ export default function AgentManager() {
                 <Label className="mb-2 block">System Prompt</Label>
                 <Textarea
                   value={form.systemPrompt}
-                  onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
+                  onChange={(event) => setForm({ ...form, systemPrompt: event.target.value })}
                   className="min-h-[160px]"
                   placeholder="系统提示词"
                 />
@@ -285,10 +328,56 @@ export default function AgentManager() {
                 <Label className="mb-2 block">工具</Label>
                 <Input
                   value={form.tools}
-                  onChange={(e) => setForm({ ...form, tools: e.target.value })}
+                  onChange={(event) => setForm({ ...form, tools: event.target.value })}
                   placeholder="逗号分隔，例如：search, calculator, weather"
                 />
                 <p className="text-xs text-muted-foreground mt-1">多个工具名用英文逗号分隔</p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <Label>Skills</Label>
+                  <span className="text-xs text-muted-foreground">
+                    选中的 skill 会追加到 Agent 的 system prompt
+                  </span>
+                </div>
+
+                {skills.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    还没有可用 skill，请先到 Skills 页面创建。
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                    {skills.map((skill) => {
+                      const selected = form.skills.includes(skill.id);
+                      return (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          onClick={() => toggleSkill(skill.id)}
+                          className={cn(
+                            'rounded-lg border p-3 text-left transition-colors',
+                            selected
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/40'
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="font-medium text-sm text-foreground">{skill.name}</div>
+                              {skill.description && (
+                                <div className="mt-1 text-xs text-muted-foreground">{skill.description}</div>
+                              )}
+                            </div>
+                            <Badge variant={selected ? 'default' : 'outline'} className="text-[10px]">
+                              {selected ? '已选中' : skill.enabled ? '可用' : '停用'}
+                            </Badge>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -296,7 +385,10 @@ export default function AgentManager() {
               <Button variant="secondary" onClick={() => setDialogOpen(false)}>
                 取消
               </Button>
-              <Button onClick={handleSave} disabled={saving || !form.name.trim()}>
+              <Button
+                onClick={handleSave}
+                disabled={saving || !form.name.trim() || !form.systemPrompt.trim()}
+              >
                 {saving ? '保存中...' : editingId ? '保存' : '创建'}
               </Button>
             </DialogFooter>

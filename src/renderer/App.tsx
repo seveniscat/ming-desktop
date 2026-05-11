@@ -5,6 +5,7 @@ import Welcome from './components/Welcome';
 import Dashboard from './components/Dashboard';
 import AgentChat from './components/AgentChat';
 import AgentManager from './components/AgentManager';
+import SkillManager from './components/SkillManager';
 import Settings from './components/Settings';
 import TechStackAnalyzer from './components/TechStackAnalyzer';
 import { themePresets, defaultThemeName, applyThemePreset, type ThemePreset } from './lib/themes';
@@ -16,6 +17,13 @@ interface ElectronAPI {
     list: () => Promise<any[]>;
     update: (agentId: string, updates: any) => Promise<void>;
     delete: (agentId: string) => Promise<void>;
+  };
+  skills: {
+    create: (config: any) => Promise<string>;
+    list: () => Promise<any[]>;
+    update: (skillId: string, updates: any) => Promise<void>;
+    delete: (skillId: string) => Promise<void>;
+    syncLocal: () => Promise<any>;
   };
   llm: {
     listProviders: () => Promise<any[]>;
@@ -244,6 +252,7 @@ function App() {
               />
             )}
             {activeTab === 'agents' && <AgentManager />}
+            {activeTab === 'skills' && <SkillManager />}
             {activeTab === 'settings' && <Settings />}
           </div>
         </div>

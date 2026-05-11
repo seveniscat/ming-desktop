@@ -12,6 +12,7 @@ const DEFAULT_CONFIG: AppConfig = {
   workPaths: [] as string[],
   dailyReportTemplate: DEFAULT_DAILY_REPORT_TEMPLATE,
   plugins: {},
+  skills: [],
   agents: [],
   llmProviders: []
 };

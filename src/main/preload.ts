@@ -15,6 +15,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke(IPCChannels.AGENT_DELETE, agentId),
   },
 
+  // Skill API
+  skills: {
+    create: (config: any) => ipcRenderer.invoke(IPCChannels.SKILL_CREATE, config),
+    list: () => ipcRenderer.invoke(IPCChannels.SKILL_LIST),
+    update: (skillId: string, updates: any) =>
+      ipcRenderer.invoke(IPCChannels.SKILL_UPDATE, skillId, updates),
+    delete: (skillId: string) =>
+      ipcRenderer.invoke(IPCChannels.SKILL_DELETE, skillId),
+    syncLocal: () => ipcRenderer.invoke(IPCChannels.SKILL_SYNC_LOCAL),
+  },
+
   // Conversation API
   conversations: {
     create: () => ipcRenderer.invoke(IPCChannels.CONVERSATION_CREATE),
@@ -121,6 +132,13 @@ export interface ElectronAPI {
     list: () => Promise<any[]>;
     update: (agentId: string, updates: any) => Promise<void>;
     delete: (agentId: string) => Promise<void>;
+  };
+  skills: {
+    create: (config: any) => Promise<string>;
+    list: () => Promise<any[]>;
+    update: (skillId: string, updates: any) => Promise<void>;
+    delete: (skillId: string) => Promise<void>;
+    syncLocal: () => Promise<any>;
   };
   conversations: {
     create: () => Promise<any>;

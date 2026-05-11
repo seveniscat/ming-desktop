@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { execSync, exec } from 'child_process';
 import { IPCChannels } from '../shared/ipc-channels';
 import { AgentManager } from './agent/AgentManager';
+import { SkillManager } from './skill/SkillManager';
 import { LLMProviderManager } from './llm/LLMProviderManager';
 import { ExecutorService } from './services/ExecutorService';
 import { ConfigManager } from './services/ConfigManager';
@@ -16,6 +17,7 @@ import { migrateFromStore } from './database/migrate-from-store';
 
 let mainWindow: BrowserWindow | null = null;
 let agentManager: AgentManager;
+let skillManager: SkillManager;
 let llmManager: LLMProviderManager;
 let toolExecutor: ToolExecutor;
 let executorService: ExecutorService;
@@ -76,8 +78,17 @@ async function initializeServices(): Promise<void> {
   toolExecutor = new ToolExecutor();
   toolExecutor.register(createDailyReportTool(configManager, executorService));
 
+  // 初始化 Skill 管理器
+  skillManager = new SkillManager();
+  await skillManager.initialize();
+
   // 初始化 Agent 管理器
-  agentManager = new AgentManager(configManager, llmManager, toolExecutor);
+  agentManager = new AgentManager(
+    configManager,
+    llmManager,
+    toolExecutor,
+    () => skillManager.listSkills().filter((skill) => skill.enabled)
+  );
   await agentManager.initialize();
 
   Logger.info('All services initialized successfully');
@@ -103,6 +114,38 @@ function setupIPCHandlers(): void {
 
   ipcMain.handle(IPCChannels.AGENT_DELETE, async (_, agentId: string) => {
     return agentManager.deleteAgent(agentId);
+  });
+
+  // Skill 相关
+  ipcMain.handle(IPCChannels.SKILL_CREATE, async (_, config: any) => {
+    return skillManager.createSkill(config);
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_LIST, async () => {
+    return skillManager.listSkills();
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_UPDATE, async (_, skillId: string, updates: any) => {
+    return skillManager.updateSkill(skillId, updates);
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_DELETE, async (_, skillId: string) => {
+    await skillManager.deleteSkill(skillId);
+
+    const agents = agentManager.listAgents();
+    await Promise.all(
+      agents
+        .filter((agent) => agent.skills.includes(skillId))
+        .map((agent) =>
+          agentManager.updateAgent(agent.id, {
+            skills: agent.skills.filter((id) => id !== skillId),
+          })
+        )
+    );
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_SYNC_LOCAL, async () => {
+    return skillManager.syncLocalSkills();
   });
 
   // Conversation 相关

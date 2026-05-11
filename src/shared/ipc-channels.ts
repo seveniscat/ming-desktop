@@ -7,6 +7,13 @@ export enum IPCChannels {
   AGENT_DELETE = 'agent:delete',
   AGENT_UPDATE = 'agent:update',
 
+  // Skill 相关
+  SKILL_CREATE = 'skill:create',
+  SKILL_LIST = 'skill:list',
+  SKILL_DELETE = 'skill:delete',
+  SKILL_UPDATE = 'skill:update',
+  SKILL_SYNC_LOCAL = 'skill:sync-local',
+
   // LLM Provider 相关
   LLM_LIST_PROVIDERS = 'llm:list-providers',
   LLM_CHAT = 'llm:chat',
