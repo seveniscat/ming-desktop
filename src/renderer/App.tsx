@@ -111,6 +111,7 @@ interface ChatLaunchRequest {
   message: string;
   model?: string;
   newConversation?: boolean;
+  autoSend?: boolean;
 }
 
 function getSystemTheme(): 'light' | 'dark' {

@@ -2,7 +2,11 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { Agent, AgentConfig, ChatMessage, Conversation, Skill } from '../../shared/types';
 import { IPCChannels } from '../../shared/ipc-channels';
-import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
+import {
+  DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
+  LEGACY_ENGLISH_DAILY_REPORTER_SYSTEM_PROMPT,
+  LEGACY_DAILY_REPORTER_SYSTEM_PROMPT,
+} from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
 import { ToolExecutor } from '../tools/ToolExecutor';
@@ -34,7 +38,7 @@ export class AgentManager extends EventEmitter {
         name: row.name,
         description: row.description || '',
         model: row.model,
-        systemPrompt: row.system_prompt,
+        systemPrompt: this.normalizeText(row.system_prompt),
         tools: JSON.parse(row.tools || '[]'),
         skills: JSON.parse(row.skills || '[]'),
         enabled: !!row.enabled,
@@ -48,9 +52,57 @@ export class AgentManager extends EventEmitter {
     // Seed default agents if none exist
     if (this.agents.size === 0) {
       await this.createDefaultAgents();
+    } else {
+      this.syncBuiltInDailyReporterPrompt();
     }
 
     Logger.info(`Initialized ${this.agents.size} agents`);
+  }
+
+  private normalizeText(value: unknown): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (Buffer.isBuffer(value)) {
+      return value.toString('utf-8');
+    }
+
+    return value == null ? '' : String(value);
+  }
+
+  private syncBuiltInDailyReporterPrompt(): void {
+    const legacyPrompts = [
+      LEGACY_DAILY_REPORTER_SYSTEM_PROMPT,
+      LEGACY_ENGLISH_DAILY_REPORTER_SYSTEM_PROMPT,
+    ].map((prompt) => prompt.trim());
+
+    const dailyReporter = Array.from(this.agents.values()).find((agent) => (
+      agent.name === 'Daily Reporter'
+      && agent.tools.includes('daily-report')
+      && legacyPrompts.includes(agent.systemPrompt.trim())
+    ));
+
+    if (!dailyReporter) {
+      return;
+    }
+
+    const updated: Agent = {
+      ...dailyReporter,
+      systemPrompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.agents.set(updated.id, updated);
+
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE agents
+      SET system_prompt = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, updated.id);
+
+    Logger.info('Daily Reporter default prompt synced to latest format');
   }
 
   private async createDefaultAgents(): Promise<void> {
@@ -434,6 +486,13 @@ export class AgentManager extends EventEmitter {
       }
 
       const resolvedModel = model || undefined;
+      const provider = this.llmManager.listProviders().find((item) => item.id === providerId);
+      const resolvedModelName = resolvedModel || provider?.models[0] || '';
+      const sendDebug = (event: import('../../shared/types').DebugModelCall) => {
+        if (!webContents.isDestroyed()) {
+          webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
+        }
+      };
 
       // Tool calling loop (non-streaming)
       let toolRounds = 0;
@@ -442,16 +501,49 @@ export class AgentManager extends EventEmitter {
 
       if (toolDefs.length > 0) {
         while (toolRounds < MAX_TOOL_ROUNDS) {
+          const roundStart = Date.now();
+          sendDebug({
+            type: 'request',
+            timestamp: roundStart,
+            data: {
+              provider: provider?.name,
+              model: resolvedModelName,
+              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              tools: toolDefs.map(tool => tool.function.name),
+            },
+          });
+
           const result = await this.llmManager.chat(providerId, messages, resolvedModel, toolDefs);
 
           if (typeof result === 'string') {
             // LLM returned text — no more tool calls
             toolLoopText = result;
+            sendDebug({
+              type: 'response',
+              timestamp: Date.now(),
+              data: {
+                provider: provider?.name,
+                model: resolvedModelName,
+                content: result.slice(0, 200) + (result.length > 200 ? '...' : ''),
+                duration: Date.now() - roundStart,
+              },
+            });
             break;
           }
 
           // LLM wants to call tools
           const { toolCalls } = result;
+          sendDebug({
+            type: 'response',
+            timestamp: Date.now(),
+            data: {
+              provider: provider?.name,
+              model: resolvedModelName,
+              content: `[Tool calls: ${toolCalls.map(tc => tc.function.name).join(', ')}]`,
+              tools: toolCalls.map(tc => tc.function.name),
+              duration: Date.now() - roundStart,
+            },
+          });
 
           // Add assistant message with tool calls to conversation
           messages.push({
@@ -462,13 +554,44 @@ export class AgentManager extends EventEmitter {
           // Execute each tool call
           for (const toolCall of toolCalls) {
             try {
+              const toolStart = Date.now();
+              sendDebug({
+                type: 'tool',
+                timestamp: toolStart,
+                data: {
+                  toolName: toolCall.function.name,
+                  toolArgs: toolCall.function.arguments,
+                  content: `Executing ${toolCall.function.name}`,
+                },
+              });
+
               const toolResult = await this.toolExecutor.execute(toolCall);
+              sendDebug({
+                type: 'tool',
+                timestamp: Date.now(),
+                data: {
+                  toolName: toolCall.function.name,
+                  toolArgs: toolCall.function.arguments,
+                  toolResult: toolResult.slice(0, 2000),
+                  content: `${toolCall.function.name} completed`,
+                  duration: Date.now() - toolStart,
+                },
+              });
               messages.push({
                 role: 'user',
                 content: `Tool ${toolCall.function.name} result:\n${toolResult}`
               });
             } catch (error) {
               const errMsg = error instanceof Error ? error.message : 'Tool execution failed';
+              sendDebug({
+                type: 'error',
+                timestamp: Date.now(),
+                data: {
+                  toolName: toolCall.function.name,
+                  toolArgs: toolCall.function.arguments,
+                  error: errMsg,
+                },
+              });
               messages.push({
                 role: 'user',
                 content: `Tool ${toolCall.function.name} error: ${errMsg}`

@@ -30,7 +30,13 @@ interface CommitInfo {
 }
 
 interface DashboardProps {
-  onStartChat?: (request: { agentName: string; message: string; model?: string; newConversation?: boolean }) => void;
+  onStartChat?: (request: {
+    agentName: string;
+    message: string;
+    model?: string;
+    newConversation?: boolean;
+    autoSend?: boolean;
+  }) => void;
 }
 
 export default function Dashboard({ onStartChat }: DashboardProps) {
@@ -168,6 +174,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
       agentName: 'Daily Reporter',
       message: `请生成工作日报，时间范围：${rangeLabel}`,
       newConversation: true,
+      autoSend: false,
     });
   };
 

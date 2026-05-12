@@ -176,13 +176,17 @@ export interface ToolCall {
 
 // Debug 相关
 export interface DebugModelCall {
-  type: 'request' | 'response' | 'chunk' | 'error';
+  type: 'request' | 'response' | 'chunk' | 'tool' | 'error';
   timestamp: number;
   data: {
     provider?: string;
     model?: string;
     messages?: Array<{ role: string; content: string }>;
     content?: string;
+    tools?: string[];
+    toolName?: string;
+    toolArgs?: string;
+    toolResult?: string;
     usage?: Record<string, any>;
     error?: string;
     duration?: number;

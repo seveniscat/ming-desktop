@@ -57,6 +57,7 @@ interface ChatLaunchRequest {
   message: string;
   model?: string;
   newConversation?: boolean;
+  autoSend?: boolean;
 }
 
 /** Parse thinking blocks from text, returning thinking content and the rest */
@@ -324,6 +325,23 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
     }
   };
 
+  const prepareDraftConversation = async (agentId: string, forceNewConversation?: boolean) => {
+    setSelectedAgentId(agentId);
+
+    if (!forceNewConversation && currentConversationId) {
+      return;
+    }
+
+    try {
+      const conv = await window.electronAPI.conversations.create();
+      setConversations(prev => [conv, ...prev]);
+      setCurrentConversationId(conv.id);
+      setMessages([]);
+    } catch (error) {
+      console.error('Failed to create draft conversation:', error);
+    }
+  };
+
   const handleSelectConversation = async (conv: Conversation) => {
     setCurrentConversationId(conv.id);
     if (conv.agentId) {
@@ -398,6 +416,15 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
     }
 
     onLaunchHandled?.();
+    if (launchRequest.autoSend === false) {
+      setInput(launchRequest.message);
+      if (launchRequest.model) {
+        setSelectedModel(launchRequest.model);
+      }
+      void prepareDraftConversation(agent.id, launchRequest.newConversation);
+      return;
+    }
+
     void sendConversationMessage({
       agentId: agent.id,
       message: launchRequest.message,
@@ -543,6 +570,7 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
                         log.type === 'request' ? 'bg-blue-600 text-white' :
                         log.type === 'response' ? 'bg-green-600 text-white' :
                         log.type === 'chunk' ? 'bg-yellow-600 text-black' :
+                        log.type === 'tool' ? 'bg-purple-600 text-white' :
                         'bg-red-600 text-white'
                       )}>
                         {log.type}
