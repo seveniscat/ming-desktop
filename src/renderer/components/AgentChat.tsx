@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil, ChevronDown, Cpu, FileText } from 'lucide-react';
+import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil, ChevronDown, Cpu, FileText, Wrench, Brain, CheckCircle2, AlertCircle, Radio, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js';
@@ -62,6 +62,21 @@ interface PromptSuggestion {
   type: 'builtin' | 'prompt';
 }
 
+interface ExecutionStep {
+  id: string;
+  type: 'request' | 'response' | 'chunk' | 'tool' | 'error';
+  timestamp: number;
+  title: string;
+  detail?: string;
+  status: 'active' | 'done' | 'error';
+}
+
+interface ExecutionState {
+  steps: ExecutionStep[];
+  collapsed: boolean;
+  finished: boolean;
+}
+
 interface ChatLaunchRequest {
   agentName: string;
   message: string;
@@ -99,6 +114,180 @@ function parseDailyReportCommand(rawInput: string): string | null {
   return buildDailyReportInstruction(aliases[rangeText] || rangeText);
 }
 
+function compactDetail(value: unknown, maxLength = 220): string {
+  if (value == null) return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  const singleLine = text.replace(/\s+/g, ' ').trim();
+  return singleLine.length > maxLength ? `${singleLine.slice(0, maxLength)}...` : singleLine;
+}
+
+function formatExecutionStep(log: any, index: number): ExecutionStep | null {
+  const data = log.data || {};
+  const id = `${log.timestamp || Date.now()}-${log.type}-${index}`;
+  const timestamp = log.timestamp || Date.now();
+
+  if (log.type === 'request') {
+    return {
+      id,
+      type: 'request',
+      timestamp,
+      title: `请求模型 ${data.model || ''}`.trim(),
+      detail: data.tools?.length ? `可用工具：${data.tools.join(', ')}` : `消息数：${data.messages?.length || 0}`,
+      status: 'active',
+    };
+  }
+
+  if (log.type === 'tool') {
+    const completed = Boolean(data.duration);
+    return {
+      id,
+      type: 'tool',
+      timestamp,
+      title: completed ? `工具完成：${data.toolName}` : `调用工具：${data.toolName}`,
+      detail: completed
+        ? compactDetail(data.toolResult || data.content)
+        : compactDetail(data.toolArgs || data.content),
+      status: completed ? 'done' : 'active',
+    };
+  }
+
+  if (log.type === 'response') {
+    return {
+      id,
+      type: 'response',
+      timestamp,
+      title: data.tools?.length ? `模型选择工具：${data.tools.join(', ')}` : '模型返回结果',
+      detail: compactDetail(data.content || data.usage),
+      status: 'done',
+    };
+  }
+
+  if (log.type === 'chunk') {
+    const content = compactDetail(data.content, 120);
+    if (!content) return null;
+    return {
+      id,
+      type: 'chunk',
+      timestamp,
+      title: '接收模型输出',
+      detail: content,
+      status: 'active',
+    };
+  }
+
+  if (log.type === 'error') {
+    return {
+      id,
+      type: 'error',
+      timestamp,
+      title: '执行出错',
+      detail: compactDetail(data.error || data.content),
+      status: 'error',
+    };
+  }
+
+  return null;
+}
+
+function ExecutionDetails({
+  steps,
+  collapsed,
+  finished,
+  onToggle,
+}: {
+  steps: ExecutionStep[];
+  collapsed: boolean;
+  finished: boolean;
+  onToggle: () => void;
+}) {
+  const visibleSteps = steps.slice(-24);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (collapsed) return;
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [visibleSteps, collapsed]);
+
+  if (visibleSteps.length === 0) {
+    return null;
+  }
+
+  const iconFor = (step: ExecutionStep) => {
+    if (step.status === 'error') return <AlertCircle size={14} />;
+    if (step.type === 'tool') return <Wrench size={14} />;
+    if (step.type === 'chunk') return <Radio size={14} />;
+    if (step.status === 'done') return <CheckCircle2 size={14} />;
+    return <Brain size={14} />;
+  };
+
+  return (
+    <div className="w-full rounded-xl border border-border/70 bg-background/80 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-200">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-3 py-2.5 border-b border-border/70 bg-muted/40 hover:bg-muted/60 transition-colors"
+      >
+        <div className="flex items-center gap-2 text-sm font-medium min-w-0">
+          <Brain size={15} className={cn(finished ? 'text-emerald-500' : 'text-primary')} />
+          <span>{finished ? '执行记录' : '执行中'}</span>
+          <span className="text-[11px] text-muted-foreground">{visibleSteps.length} steps</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!finished && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-primary">
+              <Sparkles size={12} className="animate-pulse" />
+              Running
+            </span>
+          )}
+          <ChevronDown
+            size={14}
+            className={cn('transition-transform duration-200', !collapsed && 'rotate-180')}
+          />
+        </div>
+      </button>
+      {!collapsed && (
+        <div
+          ref={scrollRef}
+          className="h-40 overflow-y-auto p-2 space-y-1.5 scroll-smooth"
+        >
+        {visibleSteps.map((step) => (
+          <div
+            key={step.id}
+            className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs animate-in fade-in slide-in-from-bottom-1 duration-200"
+          >
+            <div
+              className={cn(
+                'mt-0.5 shrink-0',
+                step.status === 'error' ? 'text-destructive' :
+                step.status === 'done' ? 'text-emerald-500' :
+                'text-primary'
+              )}
+            >
+              {iconFor(step)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium truncate">{step.title}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  {new Date(step.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              {step.detail && (
+                <div className="mt-0.5 text-muted-foreground break-words line-clamp-2">
+                  {step.detail}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Parse thinking blocks from text, returning thinking content and the rest */
 function parseThinking(text: string): { thinking: string | null; content: string } {
   // Match both `<think></think>` (DeepSeek) and `<think></think>` (Qwen) patterns
@@ -125,14 +314,14 @@ function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
 
   return (
-    <div className={cn('flex items-start gap-3', isUser ? 'flex-row-reverse' : '')}>
-      <div className={cn('p-2 rounded-lg', isUser ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
+    <div className={cn('flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300', isUser ? 'flex-row-reverse' : '')}>
+      <div className={cn('p-2 rounded-xl transition-colors', isUser ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
         {isUser ? <User size={20} /> : <Bot size={20} />}
       </div>
       <div
         className={cn(
-          'max-w-[85%] p-4 rounded-lg',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          'max-w-[85%] p-4 rounded-2xl shadow-sm transition-all',
+          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted/80 border border-border/60'
         )}
       >
         {/* Thinking chain — collapsible */}
@@ -203,8 +392,12 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [debugLogs, setDebugLogs] = useState<any[]>([]);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [executionState, setExecutionState] = useState<ExecutionState>({
+    steps: [],
+    collapsed: false,
+    finished: false,
+  });
+  const activeConversationRef = useRef<string | null>(null);
   const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -232,11 +425,22 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, executionState.steps.length, executionState.collapsed, isLoading]);
 
   useEffect(() => {
     const remove = window.electronAPI.debug?.onModelCall((data) => {
-      setDebugLogs(prev => [...prev.slice(-49), data]); // keep last 50 entries
+      if (data.conversationId && data.conversationId !== activeConversationRef.current) {
+        return;
+      }
+
+      setExecutionState(prev => {
+        const step = formatExecutionStep(data, prev.steps.length);
+        if (!step) return prev;
+        return {
+          ...prev,
+          steps: [...prev.steps.slice(-39), step],
+        };
+      });
     });
     return () => remove?.();
   }, []);
@@ -299,6 +503,21 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
     if (model) {
       setSelectedModel(model);
     }
+    activeConversationRef.current = convId;
+    setExecutionState({
+      steps: [
+        {
+          id: `start-${Date.now()}`,
+          type: 'request',
+          timestamp: Date.now(),
+          title: '准备发送消息',
+          detail: `Agent: ${agents.find(a => a.id === agentId)?.name || agentId}`,
+          status: 'active',
+        },
+      ],
+      collapsed: false,
+      finished: false,
+    });
 
     const userMessage: Message = {
       role: 'user',
@@ -337,6 +556,22 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
       removeError();
       if (data.conversationId !== convId) return;
       setIsLoading(false);
+      setExecutionState(prev => ({
+        ...prev,
+        finished: true,
+        steps: [
+          ...prev.steps,
+          {
+            id: `done-${Date.now()}`,
+            type: 'response',
+            timestamp: Date.now(),
+            title: '回复完成',
+            detail: data.usage ? compactDetail(data.usage) : undefined,
+            status: 'done',
+          },
+        ],
+      }));
+      activeConversationRef.current = null;
       loadConversations();
     });
 
@@ -357,6 +592,23 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
         return updated;
       });
       setIsLoading(false);
+      setExecutionState(prev => ({
+        ...prev,
+        finished: true,
+        collapsed: false,
+        steps: [
+          ...prev.steps,
+          {
+            id: `error-${Date.now()}`,
+            type: 'error',
+            timestamp: Date.now(),
+            title: '回复失败',
+            detail: data.error,
+            status: 'error',
+          },
+        ],
+      }));
+      activeConversationRef.current = null;
     });
 
     if (!convId) return;
@@ -415,6 +667,8 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
       setConversations(prev => [conv, ...prev]);
       setCurrentConversationId(conv.id);
       setMessages([]);
+      setExecutionState({ steps: [], collapsed: false, finished: false });
+      activeConversationRef.current = null;
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
@@ -438,6 +692,8 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
         if (reusable) {
           setCurrentConversationId(reusable.id);
           setMessages(await loadConversationMessages(reusable.id));
+          setExecutionState({ steps: [], collapsed: false, finished: false });
+          activeConversationRef.current = null;
           return;
         }
 
@@ -451,6 +707,8 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
       setConversations(prev => [conv, ...prev]);
       setCurrentConversationId(conv.id);
       setMessages([]);
+      setExecutionState({ steps: [], collapsed: false, finished: false });
+      activeConversationRef.current = null;
     } catch (error) {
       console.error('Failed to create draft conversation:', error);
     }
@@ -458,6 +716,8 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
 
   const handleSelectConversation = async (conv: Conversation) => {
     setCurrentConversationId(conv.id);
+    setExecutionState({ steps: [], collapsed: false, finished: false });
+    activeConversationRef.current = null;
     if (conv.agentId) {
       setSelectedAgentId(conv.agentId);
     }
@@ -485,6 +745,8 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
       if (currentConversationId === deleteTarget.id) {
         setCurrentConversationId(null);
         setMessages([]);
+        setExecutionState({ steps: [], collapsed: false, finished: false });
+        activeConversationRef.current = null;
       }
     } catch (error) {
       console.error('Failed to delete conversation:', error);
@@ -741,65 +1003,6 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
         </div>
         <Separator />
 
-        {/* Debug Panel Toggle */}
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-muted/50 border-b border-border">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs h-6"
-            onClick={() => setDebugPanelOpen(!debugPanelOpen)}
-          >
-            {debugPanelOpen ? 'Hide' : 'Show'} Debug ({debugLogs.length})
-          </Button>
-          {debugPanelOpen && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs h-6"
-              onClick={() => setDebugLogs([])}
-            >
-              Clear
-            </Button>
-          )}
-        </div>
-
-        {/* Debug Panel Content */}
-        {debugPanelOpen && (
-          <div className="border-b border-border bg-black text-green-400 font-mono text-xs overflow-auto max-h-64">
-            {debugLogs.length === 0 ? (
-              <div className="p-4 text-muted-foreground">No debug logs yet. Send a message to see API calls.</div>
-            ) : (
-              <div className="p-2 space-y-1">
-                {debugLogs.map((log, i) => (
-                  <details key={i} className="group">
-                    <summary className="cursor-pointer hover:bg-white/5 px-2 py-1 rounded flex items-center gap-2">
-                      <span className={cn(
-                        'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase',
-                        log.type === 'request' ? 'bg-blue-600 text-white' :
-                        log.type === 'response' ? 'bg-green-600 text-white' :
-                        log.type === 'chunk' ? 'bg-yellow-600 text-black' :
-                        log.type === 'tool' ? 'bg-purple-600 text-white' :
-                        'bg-red-600 text-white'
-                      )}>
-                        {log.type}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {new Date(log.timestamp).toLocaleTimeString()}
-                      </span>
-                      {log.data.provider && <span className="text-cyan-400">{log.data.provider}</span>}
-                      {log.data.model && <span className="text-purple-400">{log.data.model}</span>}
-                      {log.data.duration != null && <span className="text-muted-foreground">{log.data.duration}ms</span>}
-                    </summary>
-                    <div className="ml-4 mt-1 p-2 bg-white/5 rounded overflow-auto max-h-48">
-                      <pre className="whitespace-pre-wrap break-all">{JSON.stringify(log.data, null, 2)}</pre>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Messages */}
         <ScrollArea className="flex-1">
           <div className="p-6 space-y-4">
@@ -811,23 +1014,37 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
                 </div>
               </div>
             ) : (
-              messages.map((message, index) => (
-                <MessageBubble key={index} message={message} />
-              ))
+              messages.map((message, index) => {
+                const isLoadingAssistant = isLoading && index === messages.length - 1 && message.role === 'assistant' && message.content === '';
+                if (isLoadingAssistant) return null;
+                return <MessageBubble key={index} message={message} />;
+              })
+            )}
+            {executionState.steps.length > 0 && (
+              <div className="ml-11 max-w-[85%]">
+                <ExecutionDetails
+                  steps={executionState.steps}
+                  collapsed={executionState.collapsed}
+                  finished={executionState.finished}
+                  onToggle={() => setExecutionState((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
+                />
+              </div>
             )}
             {isLoading && messages[messages.length - 1]?.content === '' && (
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted">
-                  <Bot size={20} />
-                </div>
-                <div className="bg-muted px-4 py-2 rounded-lg">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.1s]" />
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.2s]" />
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted">
+                    <Bot size={20} />
+                  </div>
+                  <div className="bg-muted/80 border border-border/60 px-4 py-2 rounded-2xl shadow-sm animate-in fade-in duration-200">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.1s]" />
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:0.2s]" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -889,55 +1106,62 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
                   <FileText size={14} />
                 </Button>
               </div>
-              <div className="relative flex gap-3">
-                {promptMenuOpen && (
-                  <div className="absolute left-0 right-14 bottom-full mb-2 rounded-lg border bg-popover text-popover-foreground shadow-lg overflow-hidden z-50">
-                    {promptSuggestions.map((suggestion, index) => (
-                      <button
-                        key={suggestion.id}
-                        type="button"
-                        className={cn(
-                          'w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors',
-                          index === selectedPromptIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
-                        )}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          applyPromptSuggestion(suggestion);
-                        }}
-                      >
-                        <FileText size={15} className="mt-0.5 text-muted-foreground shrink-0" />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span className="font-medium text-sm truncate">{suggestion.name}</span>
-                            <span className="font-mono text-[11px] text-muted-foreground shrink-0">/{suggestion.trigger}</span>
-                          </span>
-                          {suggestion.description && (
-                            <span className="block text-xs text-muted-foreground truncate mt-0.5">
-                              {suggestion.description}
-                            </span>
+              <div className="rounded-2xl border border-border/70 bg-muted/30 shadow-sm p-3 transition-all focus-within:border-primary/50 focus-within:shadow-md">
+                <div className="relative flex gap-3">
+                  {promptMenuOpen && (
+                    <div className="absolute left-0 right-14 bottom-full mb-3 rounded-xl border border-border/70 bg-popover/95 backdrop-blur text-popover-foreground shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      {promptSuggestions.map((suggestion, index) => (
+                        <button
+                          key={suggestion.id}
+                          type="button"
+                          className={cn(
+                            'w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors',
+                            index === selectedPromptIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
                           )}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder={`Message ${selectedAgent?.name || 'agent'}${selectedModel ? ` (${selectedModel})` : ''}...`}
-                  disabled={isLoading}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !input.trim()}
-                  size="default"
-                >
-                  <Send size={18} />
-                </Button>
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            applyPromptSuggestion(suggestion);
+                          }}
+                        >
+                          <FileText size={15} className="mt-0.5 text-muted-foreground shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-2">
+                              <span className="font-medium text-sm truncate">{suggestion.name}</span>
+                              <span className="font-mono text-[11px] text-muted-foreground shrink-0">/{suggestion.trigger}</span>
+                            </span>
+                            {suggestion.description && (
+                              <span className="block text-xs text-muted-foreground truncate mt-0.5">
+                                {suggestion.description}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    placeholder={`Message ${selectedAgent?.name || 'agent'}${selectedModel ? ` (${selectedModel})` : ''}...`}
+                    disabled={isLoading}
+                    className="flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 text-[15px]"
+                  />
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={isLoading || !input.trim()}
+                    size="icon"
+                    className="h-10 w-10 rounded-xl shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Send size={18} />
+                  </Button>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span className="truncate">按 Enter 发送，输入 / 唤起提示词</span>
+                  <span>{selectedModel || 'No model'}</span>
+                </div>
               </div>
             </div>
           </>

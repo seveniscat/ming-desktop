@@ -490,7 +490,10 @@ export class AgentManager extends EventEmitter {
       const resolvedModelName = resolvedModel || provider?.models[0] || '';
       const sendDebug = (event: import('../../shared/types').DebugModelCall) => {
         if (!webContents.isDestroyed()) {
-          webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
+          webContents.send(IPCChannels.DEBUG_MODEL_CALL, {
+            ...event,
+            conversationId,
+          });
         }
       };
 
@@ -629,9 +632,7 @@ export class AgentManager extends EventEmitter {
             }
           },
           (event) => {
-            if (!webContents.isDestroyed()) {
-              webContents.send(IPCChannels.DEBUG_MODEL_CALL, event);
-            }
+            sendDebug(event);
           }
         );
 

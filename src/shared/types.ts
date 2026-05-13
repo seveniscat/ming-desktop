@@ -197,6 +197,7 @@ export interface ToolCall {
 export interface DebugModelCall {
   type: 'request' | 'response' | 'chunk' | 'tool' | 'error';
   timestamp: number;
+  conversationId?: string;
   data: {
     provider?: string;
     model?: string;
