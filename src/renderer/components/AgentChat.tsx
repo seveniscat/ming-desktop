@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil, ChevronDown, Cpu, FileText, Wrench, Brain, CheckCircle2, AlertCircle, Radio, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import hljs from 'highlight.js';
+import rehypeHighlight from 'rehype-highlight';
 import type { PromptTemplate } from '../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -344,23 +344,7 @@ function MessageBubble({ message }: { message: Message }) {
           <div className="markdown prose prose-sm max-w-none dark:prose-invert">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              components={{
-                code({ className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const codeStr = String(children).replace(/\n$/, '');
-                  if (match) {
-                    return (
-                      <code
-                        className={className}
-                        dangerouslySetInnerHTML={{
-                          __html: hljs.highlight(codeStr, { language: match[1] }).value,
-                        }}
-                      />
-                    );
-                  }
-                  return <code className={className} {...props}>{children}</code>;
-                },
-              }}
+              rehypePlugins={[rehypeHighlight]}
             >
               {content}
             </ReactMarkdown>
