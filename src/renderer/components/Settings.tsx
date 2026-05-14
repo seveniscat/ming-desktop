@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, RotateCcw, Key, Settings as SettingsIcon, Palette, Globe, FolderOpen, Plus, X } from 'lucide-react';
 import LLMConfiguration from './LLMConfiguration';
-import { useTheme } from '../App';
+import { useTheme } from './ThemeProvider';
 import { themePresets } from '@/lib/themes';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
 import { Button } from './ui/button';
@@ -11,8 +11,7 @@ import { Label } from './ui/label';
 import { cn } from '@/lib/utils';
 
 export default function Settings() {
-  const { setTheme: setCtxTheme, colorTheme, setColorTheme } = useTheme();
-  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('dark');
+  const { theme, setTheme: setCtxTheme, colorTheme, setColorTheme } = useTheme();
   const [language, setLanguage] = useState('zh-CN');
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [workPaths, setWorkPaths] = useState<string[]>([]);
@@ -25,7 +24,6 @@ export default function Settings() {
   const loadSettings = async () => {
     try {
       const config = await window.electronAPI.config.getAll();
-      setTheme(config.theme || 'dark');
       setLanguage(config.language || 'zh-CN');
       setAutoUpdate(config.autoUpdate !== false);
       if (Array.isArray(config.workPaths)) {
@@ -39,7 +37,6 @@ export default function Settings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await window.electronAPI.config.set('theme', theme);
       await window.electronAPI.config.set('language', language);
       await window.electronAPI.config.set('autoUpdate', autoUpdate);
       await window.electronAPI.config.set('workPaths', workPaths);
@@ -53,7 +50,7 @@ export default function Settings() {
   const handleReset = async () => {
     if (confirm('Are you sure you want to reset all settings to defaults?')) {
       try {
-        await window.electronAPI.config.set('theme', 'dark');
+        setCtxTheme('dark');
         await window.electronAPI.config.set('language', 'zh-CN');
         await window.electronAPI.config.set('autoUpdate', true);
         await window.electronAPI.config.set('workPaths', []);
@@ -117,14 +114,14 @@ export default function Settings() {
             <div className="space-y-4">
               <div>
                 <Label className="mb-2 block">Theme</Label>
-                <Select value={theme} onValueChange={(v) => { setTheme(v as any); setCtxTheme(v as any); }}>
+                <Select value={theme} onValueChange={(v) => setCtxTheme(v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="light">Light</SelectItem>
                     <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="auto">Auto (System)</SelectItem>
+                    <SelectItem value="system">Auto (System)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

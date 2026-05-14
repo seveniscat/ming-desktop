@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { LayoutDashboard, MessageSquare, Bot, Settings, Sun, Moon, Monitor, Home, Search, PanelLeftClose, PanelLeft, Wrench, FileText, Bug } from 'lucide-react';
-import { useTheme } from '../App';
+import { useTheme } from './ThemeProvider';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,7 @@ export default function Sidebar({ activeTab, onTabChange, collapsed: controlledC
   ];
 
   const cycleTheme = () => {
-    const next = theme === 'dark' ? 'light' : theme === 'light' ? 'auto' : 'dark';
+    const next = theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark';
     setTheme(next);
   };
 

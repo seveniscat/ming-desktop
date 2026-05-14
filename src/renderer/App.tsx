@@ -1,5 +1,5 @@
 import type { OpenDialogOptions, OpenDialogReturnValue } from 'electron';
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Welcome from './components/Welcome';
 import Dashboard from './components/Dashboard';
@@ -11,7 +11,7 @@ import Settings from './components/Settings';
 import TechStackAnalyzer from './components/TechStackAnalyzer';
 import DebugPanel from './components/DebugPanel';
 import ClientPerformanceMonitor from './components/ClientPerformanceMonitor';
-import { themePresets, defaultThemeName, applyThemePreset, type ThemePreset } from './lib/themes';
+import { ThemeProvider } from './components/ThemeProvider';
 
 interface ElectronAPI {
   agents: {
@@ -75,6 +75,7 @@ interface ElectronAPI {
     delete: (conversationId: string) => Promise<void>;
     rename: (conversationId: string, title: string) => Promise<void>;
     chat: (conversationId: string, agentId: string, message: string, model?: string) => void;
+    abort: (conversationId: string) => void;
     onStreamChunk: (callback: (data: any) => void) => () => void;
     onStreamEnd: (callback: (data: any) => void) => () => void;
     onStreamError: (callback: (data: any) => void) => () => void;
@@ -105,31 +106,6 @@ declare global {
   }
 }
 
-// Theme context
-type Theme = 'light' | 'dark' | 'auto';
-
-interface ThemeContextType {
-  theme: Theme;
-  resolvedTheme: 'light' | 'dark';
-  setTheme: (theme: Theme) => void;
-  colorTheme: string;
-  setColorTheme: (name: string) => void;
-  colorPresets: ThemePreset[];
-}
-
-const ThemeContext = createContext<ThemeContextType>({
-  theme: 'dark',
-  resolvedTheme: 'dark',
-  setTheme: () => {},
-  colorTheme: defaultThemeName,
-  setColorTheme: () => {},
-  colorPresets: themePresets,
-});
-
-export function useTheme() {
-  return useContext(ThemeContext);
-}
-
 interface ChatLaunchRequest {
   agentName: string;
   message: string;
@@ -137,65 +113,6 @@ interface ChatLaunchRequest {
   newConversation?: boolean;
   reuseAgentConversation?: boolean;
   autoSend?: boolean;
-}
-
-function getSystemTheme(): 'light' | 'dark' {
-  if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-  return 'light';
-}
-
-function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
-  const [colorTheme, setColorThemeState] = useState(defaultThemeName);
-
-  const applyAll = useCallback((t: Theme, colorName: string, resolved?: 'light' | 'dark') => {
-    const r = resolved || (t === 'auto' ? getSystemTheme() : t);
-    setResolvedTheme(r);
-    document.documentElement.classList.toggle('dark', r === 'dark');
-    const preset = themePresets.find(p => p.name === colorName) || themePresets[0];
-    applyThemePreset(preset, r);
-  }, []);
-
-  const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
-    applyAll(t, colorTheme);
-    window.electronAPI?.config.set('theme', t);
-  }, [applyAll, colorTheme]);
-
-  const setColorTheme = useCallback((name: string) => {
-    setColorThemeState(name);
-    applyAll(theme, name);
-    window.electronAPI?.config.set('colorTheme', name);
-  }, [applyAll, theme]);
-
-  // Load saved theme on mount
-  useEffect(() => {
-    const loadTheme = async () => {
-      const saved = await window.electronAPI?.config.get('theme');
-      const savedColor = await window.electronAPI?.config.get('colorTheme');
-      const t = saved || 'dark';
-      const c = savedColor || defaultThemeName;
-      setThemeState(t);
-      setColorThemeState(c);
-      applyAll(t, c);
-    };
-    loadTheme();
-
-    const handler = () => {
-      if (theme === 'auto') applyAll('auto', colorTheme);
-    };
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', handler);
-    return () => {
-      window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', handler);
-    };
-  }, [applyAll, theme, colorTheme]);
-
-  return (
-    <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme, colorTheme, setColorTheme, colorPresets: themePresets }}>
-      {children}
-    </ThemeContext.Provider>
-  );
 }
 
 function App() {
