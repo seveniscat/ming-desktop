@@ -10,6 +10,7 @@ import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Separator } from './ui/separator';
 import { cn } from '@/lib/utils';
+import GitHeatmap from './GitHeatmap';
 
 interface GitRepo {
   name: string;
@@ -40,6 +41,20 @@ interface DashboardProps {
   }) => void;
 }
 
+// Module-level cache: survives tab switches (component unmount/remount)
+type HeatmapData = {
+  data: Record<string, number>;
+  stats: {
+    totalCommits: number;
+    longestStreak: number;
+    currentStreak: number;
+    mostActiveMonth: string;
+    mostActiveDay: string;
+  };
+};
+let cachedHeatmapData: HeatmapData | null = null;
+let heatmapFetchPromise: Promise<HeatmapData | null> | null = null;
+
 export default function Dashboard({ onStartChat }: DashboardProps) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const [timeRange, setTimeRange] = useState<string>('today');
@@ -55,6 +70,44 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   const [activeSheet, setActiveSheet] = useState<'commits' | 'repos' | null>(null);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
   const [gitUser, setGitUser] = useState({ name: '', email: '' });
+  const [heatmapData, setHeatmapData] = useState<{
+    data: Record<string, number>;
+    stats: {
+      totalCommits: number;
+      longestStreak: number;
+      currentStreak: number;
+      mostActiveMonth: string;
+      mostActiveDay: string;
+    };
+  } | null>(null);
+  const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
+
+  const fetchHeatmap = useCallback(async () => {
+    // Return cached data immediately if available
+    if (cachedHeatmapData) {
+      setHeatmapData(cachedHeatmapData);
+      return;
+    }
+    // Deduplicate: reuse in-flight request
+    if (!heatmapFetchPromise) {
+      heatmapFetchPromise = window.electronAPI.git.heatmap()
+        .then(result => {
+          cachedHeatmapData = result;
+          return result;
+        })
+        .catch(error => {
+          console.error('Failed to fetch heatmap:', error);
+          return null;
+        })
+        .finally(() => {
+          heatmapFetchPromise = null;
+        });
+    }
+    setIsHeatmapLoading(true);
+    const result = await heatmapFetchPromise;
+    if (result) setHeatmapData(result);
+    setIsHeatmapLoading(false);
+  }, []);
 
   // Sort repos by activity: repos with commits first (sorted by date desc), then repos without commits
   const sortedGitRepos = useMemo(() => {
@@ -154,6 +207,12 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
       fetchStats();
     }
   }, [workPaths, fetchStats]);
+
+  useEffect(() => {
+    if (workPaths.length > 0) {
+      fetchHeatmap();
+    }
+  }, [workPaths, fetchHeatmap]);
 
   const handleGenerateReport = async () => {
     const timeRangeLabels: Record<string, string> = {
@@ -311,6 +370,24 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
             </CardContent>
           </Card>
         )}
+
+        {/* Git Commit Heatmap */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Activity size={16} className="text-muted-foreground" />
+              <span className="text-sm font-medium text-secondary-foreground">
+                Commit Activity
+              </span>
+              {heatmapData && (
+                <span className="text-sm text-muted-foreground ml-1">
+                  {heatmapData.stats.totalCommits.toLocaleString()} commits in the last year
+                </span>
+              )}
+            </div>
+            <GitHeatmap heatmapData={heatmapData} isLoading={isHeatmapLoading} />
+          </CardContent>
+        </Card>
 
         {/* Work Paths Info */}
         {workPaths.length > 0 && (

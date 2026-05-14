@@ -57,6 +57,16 @@ interface ElectronAPI {
   git: {
     scanRepos: () => Promise<{ name: string; path: string }[]>;
     getUser: () => Promise<{ name: string; email: string }>;
+    heatmap: () => Promise<{
+      data: Record<string, number>;
+      stats: {
+        totalCommits: number;
+        longestStreak: number;
+        currentStreak: number;
+        mostActiveMonth: string;
+        mostActiveDay: string;
+      };
+    }>;
   };
   conversations: {
     create: () => Promise<any>;

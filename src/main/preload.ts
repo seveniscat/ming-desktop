@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   git: {
     scanRepos: () => ipcRenderer.invoke(IPCChannels.GIT_SCAN_REPOS),
     getUser: () => ipcRenderer.invoke(IPCChannels.GIT_GET_USER),
+    heatmap: () => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP),
   },
 
   // Daily Report API
@@ -207,6 +208,16 @@ export interface ElectronAPI {
   git: {
     scanRepos: () => Promise<{ name: string; path: string }[]>;
     getUser: () => Promise<{ name: string; email: string }>;
+    heatmap: () => Promise<{
+      data: Record<string, number>;
+      stats: {
+        totalCommits: number;
+        longestStreak: number;
+        currentStreak: number;
+        mostActiveMonth: string;
+        mostActiveDay: string;
+      };
+    }>;
   };
   dailyReport: {
     fetch: (params: any) => Promise<any>;

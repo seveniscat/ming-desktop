@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync, exec } from 'child_process';
+import { format } from 'date-fns';
 import { IPCChannels } from '../shared/ipc-channels';
 import { AgentManager } from './agent/AgentManager';
 import { SkillManager } from './skill/SkillManager';
@@ -423,6 +424,117 @@ function setupIPCHandlers(): void {
     } catch {
       return { name: '', email: '' };
     }
+  });
+
+  // Git commit heatmap data
+  ipcMain.handle(IPCChannels.GIT_HEATMAP, async () => {
+    const workPaths = configManager.get('workPaths', []) as string[];
+    if (!workPaths.length) return { data: {}, stats: { totalCommits: 0, longestStreak: 0, currentStreak: 0, mostActiveMonth: '', mostActiveDay: '' } };
+
+    const repos: { name: string; path: string }[] = [];
+
+    function scanDir(dir: string, depth: number) {
+      if (depth <= 0) return;
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          const fullPath = path.join(dir, entry.name);
+          if (!entry.isDirectory()) continue;
+          if (fs.existsSync(path.join(fullPath, '.git'))) {
+            repos.push({ name: entry.name, path: fullPath });
+          } else if (depth > 1) {
+            scanDir(fullPath, depth - 1);
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    for (const wp of workPaths) {
+      try {
+        if (fs.existsSync(path.join(wp, '.git'))) {
+          repos.push({ name: path.basename(wp), path: wp });
+        }
+        scanDir(wp, 3);
+      } catch { /* skip */ }
+    }
+
+    const data: Record<string, number> = {};
+    const gitUser = (() => {
+      try {
+        const name = execSync('git config user.name', { encoding: 'utf-8' }).trim();
+        return name;
+      } catch { return ''; }
+    })();
+
+    for (const repo of repos) {
+      try {
+        const cmd = gitUser
+          ? `git -C "${repo.path}" log --all --author="${gitUser}" --since="1 year ago" --format=%ad --date=short`
+          : `git -C "${repo.path}" log --all --since="1 year ago" --format=%ad --date=short`;
+        const output = execSync(cmd, { encoding: 'utf-8', timeout: 10000 });
+        for (const line of output.trim().split('\n')) {
+          const date = line.trim();
+          if (date) data[date] = (data[date] || 0) + 1;
+        }
+      } catch { /* skip repos with no commits or errors */ }
+    }
+
+    // Compute stats
+    const totalCommits = Object.values(data).reduce((a, b) => a + b, 0);
+    const dates = Object.keys(data).sort();
+
+    // Longest streak
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let prevDate: Date | null = null;
+
+    for (const d of dates) {
+      const cur = new Date(d);
+      if (prevDate) {
+        const diffDays = Math.round((cur.getTime() - prevDate.getTime()) / 86400000);
+        if (diffDays === 1) {
+          tempStreak++;
+        } else {
+          tempStreak = 1;
+        }
+      } else {
+        tempStreak = 1;
+      }
+      if (tempStreak > longestStreak) longestStreak = tempStreak;
+      prevDate = cur;
+    }
+
+    // Current streak (from today backwards)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let streakDate = new Date(today);
+    let currentStreak = 0;
+    while (true) {
+      const key = format(streakDate, 'yyyy-MM-dd');
+      if (data[key] && data[key] > 0) {
+        currentStreak++;
+        streakDate.setDate(streakDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    // Most active month
+    const monthCounts: Record<string, number> = {};
+    for (const [d, count] of Object.entries(data)) {
+      const monthKey = d.slice(0, 7);
+      monthCounts[monthKey] = (monthCounts[monthKey] || 0) + count;
+    }
+    const mostActiveMonth = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
+    // Most active day
+    const mostActiveDay = dates.reduce((max, d) => (data[d] > (data[max] || 0) ? d : max), dates[0] || '');
+
+    return {
+      data,
+      stats: { totalCommits, longestStreak, currentStreak, mostActiveMonth, mostActiveDay },
+    };
   });
 
   // Daily Report - 调用 daily-report tool 收集 Git 提交数据
