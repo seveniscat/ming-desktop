@@ -259,6 +259,10 @@ function setupIPCHandlers(): void {
     agentManager.chatInConversationStream(conversationId, agentId, message, model, webContents);
   });
 
+  ipcMain.on(IPCChannels.CONVERSATION_CHAT_ABORT, (_, conversationId: string) => {
+    agentManager.abortConversationChat(conversationId);
+  });
+
   // Debug 相关
   ipcMain.handle(IPCChannels.DEBUG_OPEN_PANEL, async () => {
     createDebugWindow();

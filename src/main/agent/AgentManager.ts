@@ -15,6 +15,7 @@ import { getDatabase } from '../database/connection';
 
 export class AgentManager extends EventEmitter {
   private agents: Map<string, Agent> = new Map();
+  private activeStreams: Map<string, AbortController> = new Map();
 
   constructor(
     private configManager: ConfigManager,
@@ -393,6 +394,17 @@ export class AgentManager extends EventEmitter {
     db.prepare("UPDATE conversations SET title = ?, updated_at = datetime('now') WHERE id = ?").run(title, conversationId);
   }
 
+  abortConversationChat(conversationId: string): boolean {
+    const controller = this.activeStreams.get(conversationId);
+    if (controller) {
+      controller.abort();
+      this.activeStreams.delete(conversationId);
+      Logger.info(`Conversation chat aborted: ${conversationId}`);
+      return true;
+    }
+    return false;
+  }
+
   private buildConversationContext(conversationId: string, agentId: string, userMessage: string): ChatMessage[] {
     const agent = this.agents.get(agentId);
     if (!agent) {
@@ -541,6 +553,9 @@ export class AgentManager extends EventEmitter {
     const toolDefs = agent ? this.toolExecutor.getToolsForAgent(agent.tools) : [];
     const db = getDatabase();
 
+    const abortController = new AbortController();
+    this.activeStreams.set(conversationId, abortController);
+
     try {
       const providerId = this.llmManager.getDefaultProviderId();
       if (!providerId) {
@@ -561,6 +576,10 @@ export class AgentManager extends EventEmitter {
 
       if (toolDefs.length > 0) {
         while (toolRounds < MAX_TOOL_ROUNDS) {
+          if (abortController.signal.aborted) {
+            toolLoopText = '';
+            break;
+          }
           const roundStart = Date.now();
           sendDebug({
             type: 'request',
@@ -690,7 +709,8 @@ export class AgentManager extends EventEmitter {
           },
           (event) => {
             sendDebug(event);
-          }
+          },
+          abortController.signal
         );
 
         db.prepare(`INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'assistant', ?, ?)`)
@@ -704,6 +724,17 @@ export class AgentManager extends EventEmitter {
         }
       }
     } catch (error) {
+      this.activeStreams.delete(conversationId);
+      const isAborted = abortController.signal.aborted;
+      if (isAborted) {
+        // Send stream end with partial content on abort
+        if (!webContents.isDestroyed()) {
+          webContents.send(IPCChannels.CONVERSATION_STREAM_END, {
+            conversationId, fullContent: '', aborted: true,
+          });
+        }
+        return;
+      }
       Logger.error(`Conversation streaming chat failed:`, error);
       if (!webContents.isDestroyed()) {
         webContents.send(IPCChannels.CONVERSATION_STREAM_ERROR, {
@@ -711,6 +742,8 @@ export class AgentManager extends EventEmitter {
           error: error instanceof Error ? error.message : 'Unknown error',
         });
       }
+    } finally {
+      this.activeStreams.delete(conversationId);
     }
   }
 }

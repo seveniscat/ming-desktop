@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil, ChevronDown, Cpu, FileText, Wrench, Brain, CheckCircle2, AlertCircle, Radio, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Plus, Trash2, MessageSquare, Pencil, ChevronDown, Cpu, FileText, Wrench, Brain, CheckCircle2, AlertCircle, Radio, Sparkles, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -779,6 +779,27 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
     });
   };
 
+  const handleAbortChat = () => {
+    if (!currentConversationId) return;
+    window.electronAPI.conversations.abort(currentConversationId);
+    setIsLoading(false);
+    setExecutionState(prev => ({
+      ...prev,
+      finished: true,
+      steps: [
+        ...prev.steps,
+        {
+          id: `abort-${Date.now()}`,
+          type: 'error',
+          timestamp: Date.now(),
+          title: '已终止生成',
+          status: 'error',
+        },
+      ],
+    }));
+    activeConversationRef.current = null;
+  };
+
   const slashQuery = input.startsWith('/') ? input.slice(1).trim().toLowerCase() : null;
   const promptSuggestions = useMemo<PromptSuggestion[]>(() => {
     if (slashQuery === null) return [];
@@ -1133,14 +1154,26 @@ export default function AgentChat({ launchRequest, onLaunchHandled }: AgentChatP
                     disabled={isLoading}
                     className="flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 text-[15px]"
                   />
-                  <Button
-                    onClick={handleSendMessage}
-                    disabled={isLoading || !input.trim()}
-                    size="icon"
-                    className="h-10 w-10 rounded-xl shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <Send size={18} />
-                  </Button>
+                  {isLoading ? (
+                    <Button
+                      onClick={handleAbortChat}
+                      size="icon"
+                      variant="destructive"
+                      className="h-10 w-10 rounded-xl shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                      title="终止生成"
+                    >
+                      <Square size={16} />
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={!input.trim()}
+                      size="icon"
+                      className="h-10 w-10 rounded-xl shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <Send size={18} />
+                    </Button>
+                  )}
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
                   <span className="truncate">按 Enter 发送，输入 / 唤起提示词</span>

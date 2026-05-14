@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     chat: (conversationId: string, agentId: string, message: string, model?: string) => {
       ipcRenderer.send(IPCChannels.CONVERSATION_CHAT, conversationId, agentId, message, model);
     },
+    abort: (conversationId: string) => {
+      ipcRenderer.send(IPCChannels.CONVERSATION_CHAT_ABORT, conversationId);
+    },
     // Streaming listeners — each returns an unsubscribe function
     onStreamChunk: (callback: (data: any) => void) => {
       const listener = (_event: any, data: any) => callback(data);
@@ -173,6 +176,7 @@ export interface ElectronAPI {
     delete: (conversationId: string) => Promise<void>;
     rename: (conversationId: string, title: string) => Promise<void>;
     chat: (conversationId: string, agentId: string, message: string, model?: string) => void;
+    abort: (conversationId: string) => void;
     onStreamChunk: (callback: (data: any) => void) => () => void;
     onStreamEnd: (callback: (data: any) => void) => () => void;
     onStreamError: (callback: (data: any) => void) => () => void;

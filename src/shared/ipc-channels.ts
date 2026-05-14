@@ -69,6 +69,8 @@ export enum IPCChannels {
   CONVERSATION_RENAME = 'conversation:rename',
   CONVERSATION_CHAT = 'conversation:chat',
 
+  CONVERSATION_CHAT_ABORT = 'conversation:chat-abort',
+
   // Streaming 相关
   CONVERSATION_STREAM_CHUNK = 'conversation:stream-chunk',
   CONVERSATION_STREAM_END = 'conversation:stream-end',

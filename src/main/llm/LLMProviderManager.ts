@@ -197,7 +197,8 @@ export class LLMProviderManager extends EventEmitter {
     messages: ChatMessage[],
     model: string | undefined,
     onChunk: (text: string) => void,
-    onDebug: (event: import('../../shared/types').DebugModelCall) => void
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
   ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
     const provider = this.providers.get(providerId);
     if (!provider) {
@@ -227,9 +228,9 @@ export class LLMProviderManager extends EventEmitter {
       let result: { fullContent: string; usage?: any };
 
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
-        result = await this.chatStreamOpenAI(client as OpenAI, provider, messages, resolvedModel, onChunk, onDebug);
+        result = await this.chatStreamOpenAI(client as OpenAI, provider, messages, resolvedModel, onChunk, onDebug, signal);
       } else if (provider.type === 'anthropic') {
-        result = await this.chatStreamAnthropic(client as Anthropic, provider, messages, resolvedModel, onChunk, onDebug);
+        result = await this.chatStreamAnthropic(client as Anthropic, provider, messages, resolvedModel, onChunk, onDebug, signal);
       } else {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
@@ -269,7 +270,8 @@ export class LLMProviderManager extends EventEmitter {
     messages: ChatMessage[],
     model: string,
     onChunk: (text: string) => void,
-    onDebug: (event: import('../../shared/types').DebugModelCall) => void
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
   ): Promise<{ fullContent: string; usage?: any }> {
     const stream = await client.chat.completions.create({
       model,
@@ -277,7 +279,7 @@ export class LLMProviderManager extends EventEmitter {
       temperature: 0.7,
       max_tokens: 2048,
       stream: true,
-    });
+    }, { signal });
 
     let fullContent = '';
     let reasoningContent = '';
@@ -333,7 +335,8 @@ export class LLMProviderManager extends EventEmitter {
     messages: ChatMessage[],
     model: string,
     onChunk: (text: string) => void,
-    onDebug: (event: import('../../shared/types').DebugModelCall) => void
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
   ): Promise<{ fullContent: string; usage?: any }> {
     const stream = client.messages.stream({
       model,
@@ -342,7 +345,7 @@ export class LLMProviderManager extends EventEmitter {
         .filter(m => m.role !== 'system')
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
       system: messages.find(m => m.role === 'system')?.content || '',
-    });
+    }, { signal });
 
     let fullContent = '';
     let thinkingContent = '';
