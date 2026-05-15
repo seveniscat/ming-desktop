@@ -65,7 +65,8 @@ interface Window {
     git: {
       scanRepos: () => Promise<{ name: string; path: string }[]>;
       getUser: () => Promise<{ name: string; email: string }>;
-      heatmap: () => Promise<{ data: Record<string, number>; stats: { totalCommits: number; longestStreak: number; currentStreak: number; mostActiveMonth: string; mostActiveDay: string } }>;
+      getAllAuthors: () => Promise<{ name: string; email: string }[]>;
+      heatmap: (author?: string) => Promise<{ data: Record<string, number>; stats: { totalCommits: number; longestStreak: number; currentStreak: number; mostActiveMonth: string; mostActiveDay: string } }>;
       clearCache: () => Promise<{ success: boolean }>;
     };
     dailyReport: {

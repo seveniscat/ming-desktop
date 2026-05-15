@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync, exec } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { format } from 'date-fns';
 import { IPCChannels } from '../shared/ipc-channels';
 import { AgentManager } from './agent/AgentManager';
@@ -431,15 +432,82 @@ function setupIPCHandlers(): void {
     }
   });
 
+  // Get all git authors from configured work paths
+  ipcMain.handle(IPCChannels.GIT_GET_ALL_AUTHORS, async () => {
+    const workPaths = configManager.get('workPaths', []) as string[];
+    if (!workPaths.length) return [];
+
+    const repos: { name: string; path: string }[] = [];
+
+    function scanDir(dir: string, depth: number) {
+      if (depth <= 0) return;
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          const fullPath = path.join(dir, entry.name);
+          if (!entry.isDirectory()) continue;
+          if (fs.existsSync(path.join(fullPath, '.git'))) {
+            repos.push({ name: entry.name, path: fullPath });
+          } else if (depth > 1) {
+            scanDir(fullPath, depth - 1);
+          }
+        }
+      } catch { /* skip unreadable dirs */ }
+    }
+
+    for (const wp of workPaths) {
+      try {
+        if (fs.existsSync(path.join(wp, '.git'))) {
+          repos.push({ name: path.basename(wp), path: wp });
+        }
+        scanDir(wp, 3);
+      } catch { /* skip */ }
+    }
+
+    // Collect all unique authors
+    const authorSet = new Set<string>();
+    for (const repo of repos) {
+      try {
+        const cmd = `git -C "${repo.path}" log --all --format='%aN|%aE'`;
+        const output = await execAsync(cmd);
+        const lines = output.trim().split('\n');
+        for (const line of lines) {
+          if (line.includes('|')) {
+            authorSet.add(line.trim());
+          }
+        }
+      } catch { /* skip repos with errors */ }
+      
+      // Yield to event loop every 5 repos
+      if (repos.indexOf(repo) % 5 === 4) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+    }
+
+    // Convert to array of { name, email } and sort by name
+    const authors = Array.from(authorSet)
+      .map(authorStr => {
+        const [name, email] = authorStr.split('|');
+        return { name: name.trim(), email: email.trim() };
+      })
+      .filter(a => a.name)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return authors;
+  });
+
   // Git commit heatmap data
-  ipcMain.handle(IPCChannels.GIT_HEATMAP, async () => {
-    // Try to load from persistent cache first
-    const cachedHeatmap = GitCacheManager.loadHeatmapCache();
-    if (cachedHeatmap) {
-      return {
-        data: cachedHeatmap.data,
-        stats: cachedHeatmap.stats,
-      };
+  ipcMain.handle(IPCChannels.GIT_HEATMAP, async (_event, author?: string) => {
+    // Try to load from persistent cache first (only if no specific author)
+    if (!author) {
+      const cachedHeatmap = GitCacheManager.loadHeatmapCache();
+      if (cachedHeatmap) {
+        return {
+          data: cachedHeatmap.data,
+          stats: cachedHeatmap.stats,
+        };
+      }
     }
 
     const workPaths = configManager.get('workPaths', []) as string[];
@@ -474,24 +542,34 @@ function setupIPCHandlers(): void {
     }
 
     const data: Record<string, number> = {};
-    const gitUser = (() => {
+    // Use provided author, or fall back to git config user.name
+    let gitUser = author;
+    if (!gitUser) {
       try {
-        const name = execSync('git config user.name', { encoding: 'utf-8' }).trim();
-        return name;
-      } catch { return ''; }
-    })();
+        const name = await execAsync('git config user.name');
+        gitUser = name.trim();
+      } catch {
+        gitUser = '';
+      }
+    }
 
+    // Process repos sequentially with small delays to avoid blocking UI
     for (const repo of repos) {
       try {
         const cmd = gitUser
           ? `git -C "${repo.path}" log --all --author="${gitUser}" --since="1 year ago" --format=%ad --date=short`
           : `git -C "${repo.path}" log --all --since="1 year ago" --format=%ad --date=short`;
-        const output = execSync(cmd, { encoding: 'utf-8', timeout: 10000 });
+        const output = await execAsync(cmd);
         for (const line of output.trim().split('\n')) {
           const date = line.trim();
           if (date) data[date] = (data[date] || 0) + 1;
         }
       } catch { /* skip repos with no commits or errors */ }
+      
+      // Yield to event loop every 5 repos to prevent UI blocking
+      if (repos.indexOf(repo) % 5 === 4) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
 
     // Compute stats
@@ -550,8 +628,10 @@ function setupIPCHandlers(): void {
       stats: { totalCommits, longestStreak, currentStreak, mostActiveMonth, mostActiveDay },
     };
 
-    // Save to persistent cache
-    GitCacheManager.saveHeatmapCache(heatmapData);
+    // Save to persistent cache (only if no specific author filter)
+    if (!author) {
+      GitCacheManager.saveHeatmapCache(heatmapData);
+    }
 
     return heatmapData;
   });
@@ -657,6 +737,16 @@ interface ProjectAnalysisResult {
 function execAsync(cmd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     exec(cmd, { encoding: 'utf-8', timeout: 30000 }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+// Git-specific async exec with shorter timeout
+function execGitAsync(cmd: string, timeoutMs: number = 10000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { encoding: 'utf-8', timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout.trim());
     });

@@ -128,7 +128,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   git: {
     scanRepos: () => ipcRenderer.invoke(IPCChannels.GIT_SCAN_REPOS),
     getUser: () => ipcRenderer.invoke(IPCChannels.GIT_GET_USER),
-    heatmap: () => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP),
+    getAllAuthors: () => ipcRenderer.invoke(IPCChannels.GIT_GET_ALL_AUTHORS),
+    heatmap: (author?: string) => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP, author),
     clearCache: () => ipcRenderer.invoke(IPCChannels.GIT_CLEAR_CACHE),
   },
 

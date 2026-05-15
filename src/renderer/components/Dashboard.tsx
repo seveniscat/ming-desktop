@@ -79,6 +79,8 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   const [activeSheet, setActiveSheet] = useState<'commits' | 'repos' | null>(null);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
   const [gitUser, setGitUser] = useState({ name: '', email: '' });
+  const [gitAuthors, setGitAuthors] = useState<{ name: string; email: string }[]>([]);
+  const [selectedAuthor, setSelectedAuthor] = useState<string>('__all__'); // '__all__' = all users
   const [heatmapData, setHeatmapData] = useState<{
     data: Record<string, number>;
     stats: {
@@ -91,17 +93,26 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   } | null>(null);
   const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
 
-  const fetchHeatmap = useCallback(async () => {
-    // Return cached data immediately if available
-    if (cachedHeatmapData) {
+  const fetchHeatmap = useCallback(async (forceRefresh = false) => {
+    // Clear memory cache if forcing refresh
+    if (forceRefresh) {
+      cachedHeatmapData = null;
+    }
+    
+    // Return cached data immediately if available (only when no specific author)
+    if (cachedHeatmapData && (!selectedAuthor || selectedAuthor === '__all__')) {
       setHeatmapData(cachedHeatmapData);
       return;
     }
+    
     // Deduplicate: reuse in-flight request
     if (!heatmapFetchPromise) {
-      heatmapFetchPromise = window.electronAPI.git.heatmap()
+      const authorParam = (selectedAuthor && selectedAuthor !== '__all__') ? selectedAuthor : undefined;
+      heatmapFetchPromise = window.electronAPI.git.heatmap(authorParam)
         .then(result => {
-          cachedHeatmapData = result;
+          if (!selectedAuthor || selectedAuthor === '__all__') {
+            cachedHeatmapData = result;
+          }
           return result;
         })
         .catch(error => {
@@ -116,7 +127,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     const result = await heatmapFetchPromise;
     if (result) setHeatmapData(result);
     setIsHeatmapLoading(false);
-  }, []);
+  }, [selectedAuthor]);
 
   // Sort repos by activity: repos with commits first (sorted by date desc), then repos without commits
   const sortedGitRepos = useMemo(() => {
@@ -196,23 +207,35 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   useEffect(() => {
     if (workPaths.length > 0) {
       loadGitRepos();
+      // Load all git authors when work paths are available
+      window.electronAPI.git.getAllAuthors().then(authors => {
+        setGitAuthors(authors || []);
+        // Default to current git user if available
+        if (gitUser.name && authors.some(a => a.name === gitUser.name)) {
+          setSelectedAuthor(gitUser.name);
+        }
+      }).catch(() => {});
     } else {
       setGitRepos([]);
+      setGitAuthors([]);
     }
-  }, [workPaths, loadGitRepos]);
+  }, [workPaths, loadGitRepos, gitUser.name]);
 
   const buildReportParams = useCallback(() => {
     const params: any = {
       timeRange: timeRange === 'custom' ? 'today' : timeRange,
       includeAllBranches: true,
-      author: 'zhangbing',
     };
+    // Only add author filter if a specific user is selected (not "__all__")
+    if (selectedAuthor && selectedAuthor !== '__all__') {
+      params.author = selectedAuthor;
+    }
     if (timeRange === 'custom') {
       if (customSince) params.sinceDate = format(customSince, 'yyyy-MM-dd');
       if (customUntil) params.untilDate = format(customUntil, 'yyyy-MM-dd');
     }
     return params;
-  }, [timeRange, customSince, customUntil]);
+  }, [timeRange, customSince, customUntil, selectedAuthor]);
 
   const fetchStats = useCallback(async (forceRefresh = false) => {
     const params = buildReportParams();
@@ -280,6 +303,18 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     }
   }, [workPaths, fetchStats]);
 
+  // Refetch stats and heatmap when selected author changes
+  useEffect(() => {
+    if (workPaths.length > 0) {
+      // Clear memory caches when author changes (persistent cache in backend will be used)
+      cachedStatsData = null;
+      cachedHeatmapData = null;
+      fetchStats();
+      fetchHeatmap();
+    }
+  }, [selectedAuthor, workPaths.length, fetchStats, fetchHeatmap]);
+
+  // Load heatmap on initial mount
   useEffect(() => {
     if (workPaths.length > 0) {
       fetchHeatmap();
@@ -413,7 +448,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                 cachedStatsData = null;
                 cachedHeatmapData = null;
                 fetchStats(true);
-                fetchHeatmap();
+                fetchHeatmap(true);
               }}
               disabled={isRefreshing}
               title="Refresh"
@@ -506,25 +541,53 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {workPaths.map((p, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--surface-hover)] border border-[hsl(var(--border))]"
-                  >
-                    <Folder size={14} className="flex-shrink-0 text-muted-foreground" />
-                    <span className="flex-1 text-sm truncate text-foreground">{p}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemovePath(i)}
-                      className="flex-shrink-0 h-6 w-6 text-muted-foreground hover:text-destructive"
-                      title="Remove"
+              <div className="space-y-3">
+                {/* Work Paths List */}
+                <div className="space-y-2">
+                  {workPaths.map((p, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--surface-hover)] border border-[hsl(var(--border))]"
                     >
-                      <X size={14} />
-                    </Button>
+                      <Folder size={14} className="flex-shrink-0 text-muted-foreground" />
+                      <span className="flex-1 text-sm truncate text-foreground">{p}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemovePath(i)}
+                        className="flex-shrink-0 h-6 w-6 text-muted-foreground hover:text-destructive"
+                        title="Remove"
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Git Author Switcher */}
+                {gitAuthors.length > 0 && (
+                  <div className="pt-3 border-t border-[hsl(var(--border))]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <User size={14} className="text-muted-foreground" />
+                      <span className="text-sm font-medium text-secondary-foreground">
+                        Git User
+                      </span>
+                    </div>
+                    <Select value={selectedAuthor} onValueChange={setSelectedAuthor}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select a user" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">All Users</SelectItem>
+                        {gitAuthors.map((author, i) => (
+                          <SelectItem key={i} value={author.name}>
+                            {author.name} {author.email ? `(${author.email})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ))}
+                )}
               </div>
             )}
           </CardContent>
