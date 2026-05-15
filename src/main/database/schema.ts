@@ -219,4 +219,27 @@ export function runMigrations(): void {
 
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration6Name);
   }
+
+  // Migration: add git cache tables for persistent caching
+  const migration7Name = 'add-git-cache';
+  const applied7 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration7Name);
+  if (!applied7) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS git_commits_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cache_key TEXT NOT NULL UNIQUE,
+        commits TEXT NOT NULL,
+        stats TEXT NOT NULL,
+        cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS git_heatmap_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        heatmap_data TEXT NOT NULL,
+        cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration7Name);
+  }
 }

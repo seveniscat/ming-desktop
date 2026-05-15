@@ -17,6 +17,7 @@ import { Logger } from './utils/Logger';
 import { initializeDatabase, closeDatabase, getDatabase } from './database/connection';
 import { runMigrations } from './database/schema';
 import { migrateFromStore } from './database/migrate-from-store';
+import { GitCacheManager } from './services/GitCacheManager';
 import type { DebugLogEntry, DebugModelCall } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -432,6 +433,15 @@ function setupIPCHandlers(): void {
 
   // Git commit heatmap data
   ipcMain.handle(IPCChannels.GIT_HEATMAP, async () => {
+    // Try to load from persistent cache first
+    const cachedHeatmap = GitCacheManager.loadHeatmapCache();
+    if (cachedHeatmap) {
+      return {
+        data: cachedHeatmap.data,
+        stats: cachedHeatmap.stats,
+      };
+    }
+
     const workPaths = configManager.get('workPaths', []) as string[];
     if (!workPaths.length) return { data: {}, stats: { totalCommits: 0, longestStreak: 0, currentStreak: 0, mostActiveMonth: '', mostActiveDay: '' } };
 
@@ -535,16 +545,46 @@ function setupIPCHandlers(): void {
     // Most active day
     const mostActiveDay = dates.reduce((max, d) => (data[d] > (data[max] || 0) ? d : max), dates[0] || '');
 
-    return {
+    const heatmapData = {
       data,
       stats: { totalCommits, longestStreak, currentStreak, mostActiveMonth, mostActiveDay },
     };
+
+    // Save to persistent cache
+    GitCacheManager.saveHeatmapCache(heatmapData);
+
+    return heatmapData;
+  });
+
+  // Clear git cache
+  ipcMain.handle(IPCChannels.GIT_CLEAR_CACHE, async () => {
+    GitCacheManager.clearAllCache();
+    return { success: true };
   });
 
   // Daily Report - 调用 daily-report tool 收集 Git 提交数据
   ipcMain.handle(IPCChannels.DAILY_REPORT_FETCH, async (_, params: any) => {
+    const cacheKey = JSON.stringify(params || {});
+    
+    // Try to load from persistent cache first
+    const cachedCommits = GitCacheManager.loadCommitsCache(cacheKey);
+    if (cachedCommits) {
+      return {
+        commits: cachedCommits.commits,
+        stats: cachedCommits.stats,
+      };
+    }
+
     const result = await toolExecutor.executeByName('daily-report', params || {});
-    return JSON.parse(result); // tool 返回 JSON 字符串，解析成对象
+    const data = JSON.parse(result); // tool 返回 JSON 字符串，解析成对象
+    
+    // Save to persistent cache
+    GitCacheManager.saveCommitsCache(cacheKey, data.commits || [], {
+      totalCommits: data.commits?.length || 0,
+      totalRepos: new Set(data.commits?.map((c: any) => c.repo) || []).size,
+    });
+    
+    return data;
   });
 
   // Daily Report - 保存日报记录

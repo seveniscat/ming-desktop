@@ -129,6 +129,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scanRepos: () => ipcRenderer.invoke(IPCChannels.GIT_SCAN_REPOS),
     getUser: () => ipcRenderer.invoke(IPCChannels.GIT_GET_USER),
     heatmap: () => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP),
+    clearCache: () => ipcRenderer.invoke(IPCChannels.GIT_CLEAR_CACHE),
   },
 
   // Daily Report API

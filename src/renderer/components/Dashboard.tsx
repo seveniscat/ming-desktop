@@ -191,6 +191,11 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     const params = buildReportParams();
     const cacheKey = JSON.stringify(params);
 
+    // Clear memory cache if forcing refresh
+    if (forceRefresh && cachedStatsData?.key === cacheKey) {
+      cachedStatsData = null;
+    }
+
     // Return cached data immediately if available and not forcing refresh
     if (!forceRefresh && cachedStatsData && cachedStatsData.key === cacheKey) {
       setCommits(cachedStatsData.commits);
@@ -374,7 +379,15 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={() => fetchStats(true)}
+              onClick={async () => {
+                // Clear persistent cache
+                await window.electronAPI.git.clearCache();
+                // Clear memory cache and refetch
+                cachedStatsData = null;
+                cachedHeatmapData = null;
+                fetchStats(true);
+                fetchHeatmap();
+              }}
               disabled={isRefreshing}
               title="Refresh"
             >

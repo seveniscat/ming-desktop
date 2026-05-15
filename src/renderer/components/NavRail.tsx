@@ -111,7 +111,7 @@ export default function NavRail({ activeTab, onTabChange }: NavRailProps) {
         >
           {activeTab === 'settings' && (
             <motion.div
-              layoutId="nav-active"
+              layoutId="nav-active-settings"
               className="absolute inset-0 rounded-lg bg-primary/10"
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             />

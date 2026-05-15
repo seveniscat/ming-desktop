@@ -56,6 +56,7 @@ export enum IPCChannels {
   GIT_SCAN_REPOS = 'git:scan-repos',
   GIT_GET_USER = 'git:get-user',
   GIT_HEATMAP = 'git:heatmap',
+  GIT_CLEAR_CACHE = 'git:clear-cache',
   DAILY_REPORT_FETCH = 'daily-report:fetch',
   DAILY_REPORT_SAVE = 'daily-report:save',
   DAILY_REPORT_LIST = 'daily-report:list',
