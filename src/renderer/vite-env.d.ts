@@ -79,5 +79,13 @@ interface Window {
       analyzeApp: (filePath: string) => Promise<any>;
       analyzeProject: (dirPath: string) => Promise<any>;
     };
+    tools: {
+      list: () => Promise<any[]>;
+      get: (toolId: string) => Promise<any>;
+      create: (config: any) => Promise<string>;
+      update: (toolId: string, updates: any) => Promise<void>;
+      delete: (toolId: string) => Promise<void>;
+      execute: (toolId: string, params: any) => Promise<{ result: string; duration: number }>;
+    };
   };
 }

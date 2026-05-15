@@ -80,7 +80,7 @@ export default function ToolsPage() {
 
   return (
     <div className="h-full">
-      <ResizablePanelGroup direction="horizontal" className="h-full">
+      <ResizablePanelGroup className="h-full">
         {/* Left panel: tool list */}
         <ResizablePanel defaultSize={30} minSize={20} maxSize={45}>
           <div className="h-full flex flex-col border-r border-[hsl(var(--border))]">

@@ -22,7 +22,7 @@ interface ParamField {
 export default function ToolTester({ tool }: ToolTesterProps) {
   const [params, setParams] = useState<Record<string, any>>({});
   const [executing, setExecuting] = useState(false);
-  const [result, setResult] = useState<{ data: string; duration: number } | null>(null);
+  const [result, setResult] = useState<{ result: string; duration: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fields: ParamField[] = useMemo(() => {
@@ -158,7 +158,7 @@ export default function ToolTester({ tool }: ToolTesterProps) {
   );
 }
 
-function ResultDisplay({ result }: { result: { data: string; duration: number } | null }) {
+function ResultDisplay({ result }: { result: { result: string; duration: number } | null }) {
   if (!result) return null;
   return (
     <div>
@@ -169,7 +169,7 @@ function ResultDisplay({ result }: { result: { data: string; duration: number } 
       </div>
       <pre className="rounded-lg bg-muted/50 border border-[hsl(var(--border))] p-4 text-sm overflow-auto max-h-[400px] font-mono whitespace-pre-wrap">
         {(() => {
-          try { return JSON.stringify(JSON.parse(result.data), null, 2); } catch { return result.data; }
+          try { return JSON.stringify(JSON.parse(result.result), null, 2); } catch { return result.result; }
         })()}
       </pre>
     </div>
