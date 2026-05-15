@@ -411,9 +411,9 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
         )}
 
         {workPaths.length === 0 && (
-          <Card className="mb-6 border-yellow-500">
+          <Card className="mb-6 rounded-xl bg-[var(--surface)] border-warning/50">
             <CardContent className="pt-6">
-              <p className="text-sm text-yellow-600 dark:text-yellow-400">
+              <p className="text-sm text-warning">
                 未配置工作目录，请在 Settings 中添加 Work Paths 以启用统计功能
               </p>
             </CardContent>
@@ -611,10 +611,10 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                       <div
                         key={i}
                         className={cn(
-                          'flex items-center gap-2 p-2.5 rounded-lg text-sm border',
+                          'flex items-center gap-2 p-2.5 rounded-xl text-sm border',
                           hasCommits
                             ? 'bg-primary/5 border-primary/30'
-                            : 'bg-input border-border'
+                            : 'bg-[var(--surface-hover)] border-[hsl(var(--border))]'
                         )}
                       >
                         <Folder size={14} className="text-muted-foreground flex-shrink-0" />
@@ -640,11 +640,11 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
         </Sheet>
 
         {/* Daily Report Generator */}
-        <Card className="mb-8">
+        <Card className="mb-8 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-accent">
+                <div className="p-2 rounded-xl bg-primary/10">
                   <TrendingUp size={20} className="text-primary" />
                 </div>
                 <div>

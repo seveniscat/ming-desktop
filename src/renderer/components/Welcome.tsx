@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { User, Mail, Folder, Calendar } from 'lucide-react';
-import { Card, CardContent } from './ui/card';
 import { format } from 'date-fns';
-import ParticleCanvas from './ParticleCanvas';
+import { motion } from 'framer-motion';
+import { fadeInUp, smoothTransition } from '@/lib/motion';
 
 export default function Welcome() {
   const [gitUser, setGitUser] = useState({ name: '', email: '' });
@@ -15,67 +15,71 @@ export default function Welcome() {
 
   return (
     <div className="relative h-full overflow-hidden">
-      <ParticleCanvas />
-
-      {/* Content overlay */}
-      <div className="relative z-10 h-full overflow-y-auto p-8">
+      {/* Content */}
+      <div className="h-full overflow-y-auto p-8">
         <div className="max-w-3xl mx-auto">
           {/* Greeting */}
-          <div className="mb-10">
+          <motion.div
+            variants={fadeInUp}
+            initial="initial"
+            animate="animate"
+            transition={smoothTransition}
+            className="mb-10"
+          >
             <h1 className="text-4xl font-bold mb-2 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-              Welcome to 銘
+              Welcome to 铭
             </h1>
-            <p className="text-blue-200/70 text-lg drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
-              {format(new Date(), 'yyyy年MM月dd日 EEEE')}
+            <p className="text-[var(--text-secondary)] text-lg drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
+              {format(new Date(), 'yyyy/MM/dd EEEE')}
             </p>
-          </div>
+          </motion.div>
 
           {/* Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <motion.div
+            variants={fadeInUp}
+            initial="initial"
+            animate="animate"
+            transition={{ ...smoothTransition, delay: 0.1 }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          >
             {/* Git User */}
             {gitUser.name && (
-              <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-                <CardContent className="pt-6">
-                  <div className="p-3 rounded-lg bg-violet-500/20 w-fit mb-4">
-                    <User size={24} className="text-violet-400" />
+              <div className="p-5 rounded-xl bg-[var(--surface)]/80 border border-[hsl(var(--border))] backdrop-blur-md">
+                <div className="p-2.5 rounded-xl bg-primary/10 w-fit mb-4">
+                  <User size={20} className="text-primary" />
+                </div>
+                <div className="text-base font-semibold text-foreground">{gitUser.name}</div>
+                {gitUser.email && (
+                  <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
+                    <Mail size={12} />
+                    {gitUser.email}
                   </div>
-                  <div className="text-lg font-semibold text-white">{gitUser.name}</div>
-                  {gitUser.email && (
-                    <div className="flex items-center gap-1.5 mt-1 text-sm text-blue-200/60">
-                      <Mail size={12} />
-                      {gitUser.email}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                )}
+              </div>
             )}
 
             {/* Repos */}
-            <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-              <CardContent className="pt-6">
-                <div className="p-3 rounded-lg bg-emerald-500/20 w-fit mb-4">
-                  <Folder size={24} className="text-emerald-400" />
-                </div>
-                <div className="text-lg font-semibold text-white">{repoCount}</div>
-                <div className="text-sm text-blue-200/60">Git Repositories</div>
-              </CardContent>
-            </Card>
+            <div className="p-5 rounded-xl bg-[var(--surface)]/80 border border-[hsl(var(--border))] backdrop-blur-md">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 w-fit mb-4">
+                <Folder size={20} className="text-emerald-400" />
+              </div>
+              <div className="text-base font-semibold text-foreground">{repoCount}</div>
+              <div className="text-sm text-muted-foreground">Git Repositories</div>
+            </div>
 
             {/* Date */}
-            <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-              <CardContent className="pt-6">
-                <div className="p-3 rounded-lg bg-blue-500/20 w-fit mb-4">
-                  <Calendar size={24} className="text-blue-400" />
-                </div>
-                <div className="text-lg font-semibold text-white">
-                  {format(new Date(), 'HH:mm')}
-                </div>
-                <div className="text-sm text-blue-200/60">
-                  {format(new Date(), 'yyyy/MM/dd')}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+            <div className="p-5 rounded-xl bg-[var(--surface)]/80 border border-[hsl(var(--border))] backdrop-blur-md">
+              <div className="p-2.5 rounded-xl bg-primary/10 w-fit mb-4">
+                <Calendar size={20} className="text-primary" />
+              </div>
+              <div className="text-base font-semibold text-foreground">
+                {format(new Date(), 'HH:mm')}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {format(new Date(), 'yyyy/MM/dd')}
+              </div>
+            </div>
+          </motion.div>
         </div>
       </div>
     </div>

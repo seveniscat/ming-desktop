@@ -93,19 +93,19 @@ export default function Settings() {
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2 text-foreground">Settings</h1>
-          <p className="text-muted-foreground">Configure your 銘</p>
+          <h1 className="text-2xl font-bold mb-1 text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground">Configure your 铭</p>
         </div>
 
         {/* Appearance */}
-        <Card className="mb-6">
+        <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-accent">
-                <Palette size={20} className="text-primary" />
+              <div className="p-2 rounded-xl bg-primary/10">
+                <Palette size={18} className="text-primary" />
               </div>
               <div>
-                <CardTitle className="text-lg">Appearance</CardTitle>
+                <CardTitle className="text-base">Appearance</CardTitle>
                 <CardDescription>Customize the look and feel</CardDescription>
               </div>
             </div>
@@ -167,14 +167,14 @@ export default function Settings() {
         </Card>
 
         {/* General */}
-        <Card className="mb-6">
+        <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <Globe size={20} className="text-green-600 dark:text-green-400" />
+              <div className="p-2 rounded-xl bg-emerald-500/10">
+                <Globe size={18} className="text-emerald-500" />
               </div>
               <div>
-                <CardTitle className="text-lg">General</CardTitle>
+                <CardTitle className="text-base">General</CardTitle>
                 <CardDescription>General application settings</CardDescription>
               </div>
             </div>
@@ -191,14 +191,14 @@ export default function Settings() {
         </Card>
 
         {/* Work Paths */}
-        <Card className="mb-6">
+        <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <SettingsIcon size={20} className="text-blue-600 dark:text-blue-400" />
+              <div className="p-2 rounded-xl bg-info/10">
+                <SettingsIcon size={18} className="text-info" />
               </div>
               <div>
-                <CardTitle className="text-lg">Work Paths</CardTitle>
+                <CardTitle className="text-base">Work Paths</CardTitle>
                 <CardDescription>Select your project directories for daily reports</CardDescription>
               </div>
             </div>
@@ -208,7 +208,7 @@ export default function Settings() {
               {workPaths.map((path, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-2 p-3 rounded-lg bg-input border"
+                  className="flex items-center gap-2 p-3 rounded-xl bg-[var(--surface-hover)] border border-[hsl(var(--border))]"
                 >
                   <FolderOpen size={16} className="flex-shrink-0 text-muted-foreground" />
                   <span className="flex-1 text-sm truncate text-foreground">{path}</span>
@@ -226,14 +226,14 @@ export default function Settings() {
 
               {workPaths.length === 0 && (
                 <p className="text-sm py-2 text-muted-foreground">
-                  No paths configured. Click "Add Folder" to get started.
+                  No paths configured. Click &quot;Add Folder&quot; to get started.
                 </p>
               )}
 
               <Button
                 variant="secondary"
                 onClick={handleAddPath}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 rounded-xl"
               >
                 <Plus size={16} />
                 Add Folder
@@ -243,14 +243,14 @@ export default function Settings() {
         </Card>
 
         {/* LLM Configuration */}
-        <Card className="mb-6">
+        <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-yellow-500/10">
-                <Key size={20} className="text-yellow-600 dark:text-yellow-400" />
+              <div className="p-2 rounded-xl bg-warning/10">
+                <Key size={18} className="text-warning" />
               </div>
               <div>
-                <CardTitle className="text-lg">LLM Configuration</CardTitle>
+                <CardTitle className="text-base">LLM Configuration</CardTitle>
                 <CardDescription>API keys, models, and default provider for Agent chat</CardDescription>
               </div>
             </div>
@@ -261,21 +261,21 @@ export default function Settings() {
         </Card>
 
         {/* Actions */}
-        <div className="flex gap-3 justify-end">
+        <div className="flex gap-3 justify-end pb-8">
           <Button
             variant="secondary"
             onClick={handleReset}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 rounded-xl"
           >
-            <RotateCcw size={18} />
+            <RotateCcw size={16} />
             Reset to Defaults
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 rounded-xl"
           >
-            <Save size={18} />
+            <Save size={16} />
             {isSaving ? 'Saving...' : 'Save Settings'}
           </Button>
         </div>

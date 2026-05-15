@@ -209,7 +209,7 @@ export default function SkillManager() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="rounded-lg bg-secondary/60 border p-3">
+                    <div className="rounded-xl bg-[var(--surface-hover)] border border-[hsl(var(--border))] p-3">
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-6">
                         {skill.prompt}
                       </p>

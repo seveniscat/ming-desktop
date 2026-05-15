@@ -42,30 +42,31 @@ function makeTheme(
       '--ring': `${ringLight}`,
     },
     dark: {
-      '--background': '222.2 84% 4.9%',
+      '--background': '240 10% 3.9%',
       '--foreground': '210 40% 98%',
-      '--card': '222.2 47.4% 11.2%',
+      '--card': '240 6% 7%',
       '--card-foreground': '210 40% 98%',
-      '--popover': '222.2 47.4% 11.2%',
+      '--popover': '240 6% 7%',
       '--popover-foreground': '210 40% 98%',
       '--primary': `${primaryDark}`,
       '--primary-foreground': `${primaryForegroundDark}`,
-      '--secondary': '217.2 32.6% 17.5%',
+      '--secondary': '240 4% 10%',
       '--secondary-foreground': '210 40% 98%',
-      '--muted': '217.2 32.6% 17.5%',
+      '--muted': '240 4% 16%',
       '--muted-foreground': '215 20.2% 65.1%',
-      '--accent': '217.2 32.6% 17.5%',
+      '--accent': '240 4% 10%',
       '--accent-foreground': '210 40% 98%',
       '--destructive': '0 62.8% 30.6%',
       '--destructive-foreground': '210 40% 98%',
-      '--border': '217.2 32.6% 17.5%',
-      '--input': '217.2 32.6% 17.5%',
+      '--border': '240 4% 16%',
+      '--input': '240 4% 16%',
       '--ring': `${ringDark}`,
     },
   };
 }
 
 export const themePresets: ThemePreset[] = [
+  makeTheme('indigo', 'Indigo', '239 84% 67%', '0 0% 100%', '239 84% 67%', '0 0% 100%', '239 84% 67%', '239 84% 67%'),
   makeTheme('sky', 'Sky', '199 89% 48%', '0 0% 100%', '199 89% 48%', '0 0% 100%', '199 89% 48%', '199 89% 48%'),
   makeTheme('violet', 'Violet', '262.1 83.3% 57.8%', '0 0% 100%', '263.4 70% 50.4%', '0 0% 100%', '262.1 83.3% 57.8%', '263.4 70% 50.4%'),
   makeTheme('green', 'Green', '142.1 76.2% 36.3%', '0 0% 100%', '142.1 70.6% 45.3%', '0 0% 100%', '142.1 76.2% 36.3%', '142.1 70.6% 45.3%'),
@@ -78,7 +79,7 @@ export const themePresets: ThemePreset[] = [
   makeTheme('teal', 'Teal', '172.3 66.3% 35.3%', '0 0% 100%', '174.4 66.4% 41.8%', '0 0% 100%', '172.3 66.3% 35.3%', '174.4 66.4% 41.8%'),
 ];
 
-export const defaultThemeName = 'sky';
+export const defaultThemeName = 'indigo';
 
 export function applyThemePreset(preset: ThemePreset, resolvedTheme: 'light' | 'dark') {
   const vars = resolvedTheme === 'dark' ? preset.dark : preset.light;

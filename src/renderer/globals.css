@@ -10,7 +10,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 199 89% 48%;
+    --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -22,15 +22,29 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 199 89% 48%;
+    --ring: 239 84% 67%;
     --radius: 0.75rem;
 
-    /* Custom extended tokens */
+    /* Extended surface tokens */
+    --surface: #f8fafc;
+    --surface-hover: #f1f5f9;
+
+    /* Text tokens */
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+
+    /* Semantic colors */
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --info: #3B82F6;
+
+    /* Legacy extended tokens */
     --bg-secondary: #f8fafc;
     --bg-tertiary: #f1f5f9;
     --bg-input: #f1f5f9;
     --bg-hover: #e2e8f0;
-    --text-secondary: #475569;
     --code-bg: #f1f5f9;
     --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     --badge-success-bg: rgba(34,197,94,0.1);
@@ -47,32 +61,47 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 240 10% 3.9%;
     --foreground: 210 40% 98%;
-    --card: 222.2 47.4% 11.2%;
+    --card: 240 6% 7%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 47.4% 11.2%;
+    --popover: 240 6% 7%;
     --popover-foreground: 210 40% 98%;
-    --primary: 199 89% 48%;
+    --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 240 4% 10%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 240 4% 16%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 240 4% 10%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 199 89% 48%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 239 84% 67%;
 
-    --bg-secondary: #0f172a;
-    --bg-tertiary: #1e293b;
-    --bg-input: #1e293b;
-    --bg-hover: #334155;
-    --text-secondary: #94a3b8;
-    --code-bg: #1e293b;
+    /* Extended surface tokens */
+    --surface: #121214;
+    --surface-hover: #1A1A1E;
+
+    /* Text tokens */
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+
+    /* Semantic colors */
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --info: #3B82F6;
+
+    /* Legacy extended tokens */
+    --bg-secondary: #0A0A0C;
+    --bg-tertiary: #121214;
+    --bg-input: #1A1A1E;
+    --bg-hover: #27272A;
+    --code-bg: #1A1A1E;
     --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
     --badge-success-bg: rgba(34,197,94,0.15);
     --badge-success-text: #4ade80;
@@ -82,9 +111,9 @@
     --badge-error-text: #f87171;
     --badge-info-bg: rgba(59,130,246,0.15);
     --badge-info-text: #60a5fa;
-    --scrollbar-track: #0f172a;
-    --scrollbar-thumb: #334155;
-    --scrollbar-thumb-hover: #475569;
+    --scrollbar-track: #0A0A0C;
+    --scrollbar-thumb: #27272A;
+    --scrollbar-thumb-hover: #3F3F46;
   }
 
   * {
@@ -103,13 +132,13 @@
   }
 }
 
-/* Scrollbar */
+/* Scrollbar — thin & subtle */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);

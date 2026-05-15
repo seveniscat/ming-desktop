@@ -356,7 +356,7 @@ export default function AgentManager() {
                           type="button"
                           onClick={() => toggleSkill(skill.id)}
                           className={cn(
-                            'rounded-lg border p-3 text-left transition-colors',
+                            'rounded-xl border p-3 text-left transition-colors',
                             selected
                               ? 'border-primary bg-primary/5'
                               : 'border-border hover:border-primary/40'

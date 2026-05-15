@@ -1,6 +1,7 @@
 import type { OpenDialogOptions, OpenDialogReturnValue } from 'electron';
 import { useState, useEffect, useCallback } from 'react';
-import Sidebar from './components/Sidebar';
+import NavRail from './components/NavRail';
+import Titlebar from './components/Titlebar';
 import Welcome from './components/Welcome';
 import Dashboard from './components/Dashboard';
 import AgentChat from './components/AgentChat';
@@ -153,8 +154,8 @@ function App() {
         <ClientPerformanceMonitor source={isDebugView ? 'debug-window' : 'main-window'} />
         <div className="flex items-center justify-center h-screen bg-background">
           <div className="text-center">
-            <div className="text-4xl mb-4">銘</div>
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-bold text-xl mx-auto mb-4">铭</div>
+            <div className="text-sm text-muted-foreground">Loading...</div>
           </div>
         </div>
       </ThemeProvider>
@@ -181,33 +182,33 @@ function App() {
       {isDebugView ? (
         <DebugPanel />
       ) : (
-      <div className="flex h-screen bg-background">
-        {/* Sidebar */}
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <div className="flex h-screen bg-background">
+          {/* NavRail */}
+          <NavRail activeTab={activeTab} onTabChange={setActiveTab} />
 
-        {/* Main content with drag bar */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* macOS drag bar */}
-          <div className="drag-region flex-shrink-0 h-8 bg-secondary" />
+          {/* Main area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Titlebar (drag region) */}
+            <Titlebar />
 
-          {/* Content */}
-          <div className="flex-1 overflow-hidden">
-            {activeTab === 'welcome' && <Welcome />}
-            {activeTab === 'techstack' && <TechStackAnalyzer />}
-            {activeTab === 'dashboard' && <Dashboard onStartChat={handleStartChat} />}
-            {activeTab === 'chat' && (
-              <AgentChat
-                launchRequest={chatLaunchRequest}
-                onLaunchHandled={() => setChatLaunchRequest(null)}
-              />
-            )}
-            {activeTab === 'agents' && <AgentManager />}
-            {activeTab === 'skills' && <SkillManager />}
-            {activeTab === 'prompts' && <PromptManager />}
-            {activeTab === 'settings' && <Settings />}
+            {/* Content */}
+            <div className="flex-1 overflow-hidden w-full">
+              {activeTab === 'welcome' && <Welcome />}
+              {activeTab === 'techstack' && <TechStackAnalyzer />}
+              {activeTab === 'dashboard' && <Dashboard onStartChat={handleStartChat} />}
+              {activeTab === 'chat' && (
+                <AgentChat
+                  launchRequest={chatLaunchRequest}
+                  onLaunchHandled={() => setChatLaunchRequest(null)}
+                />
+              )}
+              {activeTab === 'agents' && <AgentManager />}
+              {activeTab === 'skills' && <SkillManager />}
+              {activeTab === 'prompts' && <PromptManager />}
+              {activeTab === 'settings' && <Settings />}
+            </div>
           </div>
         </div>
-      </div>
       )}
     </ThemeProvider>
   );

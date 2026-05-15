@@ -1,0 +1,76 @@
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import type { PromptSuggestion, PromptTemplate } from '../types';
+
+export function useChatInput({
+  promptTemplates,
+  isLoading,
+}: {
+  promptTemplates: PromptTemplate[];
+  isLoading: boolean;
+}) {
+  const [input, setInput] = useState('');
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const slashQuery = input.startsWith('/') ? input.slice(1).trim().toLowerCase() : null;
+
+  const promptSuggestions = useMemo<PromptSuggestion[]>(() => {
+    if (slashQuery === null) return [];
+
+    const builtins: PromptSuggestion[] = [
+      {
+        id: 'builtin-daily-report',
+        name: '生成日报',
+        trigger: '日报',
+        description: '复用 Daily Reporter 会话生成工作日报',
+        content: '/日报',
+        type: 'builtin',
+      },
+    ];
+
+    const userPrompts = promptTemplates
+      .filter((prompt) => prompt.enabled)
+      .map<PromptSuggestion>((prompt) => ({
+        id: prompt.id,
+        name: prompt.name,
+        trigger: prompt.trigger,
+        description: prompt.description,
+        content: prompt.content,
+        type: 'prompt',
+      }));
+
+    const all = [...builtins, ...userPrompts];
+    if (!slashQuery) return all.slice(0, 8);
+
+    return all
+      .filter((item) => {
+        const haystack = `${item.name} ${item.trigger} ${item.description}`.toLowerCase();
+        return haystack.includes(slashQuery);
+      })
+      .slice(0, 8);
+  }, [promptTemplates, slashQuery]);
+
+  const promptMenuOpen = slashQuery !== null && promptSuggestions.length > 0 && !isLoading;
+
+  useEffect(() => {
+    setSelectedPromptIndex(0);
+  }, [slashQuery]);
+
+  const applyPromptSuggestion = useCallback((suggestion: PromptSuggestion) => {
+    setInput(suggestion.content);
+    setSelectedPromptIndex(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  return {
+    input,
+    setInput,
+    inputRef,
+    slashQuery,
+    promptSuggestions,
+    promptMenuOpen,
+    selectedPromptIndex,
+    setSelectedPromptIndex,
+    applyPromptSuggestion,
+  };
+}
