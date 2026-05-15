@@ -10,6 +10,7 @@ import SkillManager from './components/SkillManager';
 import PromptManager from './components/PromptManager';
 import Settings from './components/Settings';
 import TechStackAnalyzer from './components/TechStackAnalyzer';
+import ToolsPage from './pages/ToolsPage';
 import DebugPanel from './components/DebugPanel';
 import ClientPerformanceMonitor from './components/ClientPerformanceMonitor';
 import { ThemeProvider } from './components/ThemeProvider';
@@ -212,6 +213,7 @@ function App() {
               )}
               {activeTab === 'agents' && <AgentManager />}
               {activeTab === 'skills' && <SkillManager />}
+              {activeTab === 'tools' && <ToolsPage />}
               {activeTab === 'prompts' && <PromptManager />}
               {activeTab === 'settings' && <Settings />}
             </div>
