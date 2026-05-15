@@ -119,13 +119,25 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     }
   };
 
+  // 持久化模型选择到 localStorage
+  useEffect(() => {
+    if (selectedModel) {
+      localStorage.setItem('selectedModel', selectedModel);
+    }
+  }, [selectedModel]);
+
   const loadProviders = async () => {
     try {
       const result = await window.electronAPI.llm.listProviders();
       const enabledProviders = result.filter((p: LLMProvider) => p.enabled);
       setProviders(enabledProviders);
-      if (enabledProviders.length > 0 && !selectedModel) {
-        const firstEnabled = enabledProviders.find(p => (p.enabledModels || []).length > 0);
+      
+      // 从 localStorage 恢复上次选择的模型
+      const savedModel = localStorage.getItem('selectedModel');
+      if (savedModel && enabledProviders.some((p: LLMProvider) => (p.enabledModels || []).includes(savedModel))) {
+        setSelectedModel(savedModel);
+      } else if (enabledProviders.length > 0 && !selectedModel) {
+        const firstEnabled = enabledProviders.find((p: LLMProvider) => (p.enabledModels || []).length > 0);
         if (firstEnabled) {
           setSelectedModel(firstEnabled.enabledModels[0]);
         }

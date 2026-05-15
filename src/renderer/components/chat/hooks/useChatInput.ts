@@ -57,7 +57,14 @@ export function useChatInput({
   }, [slashQuery]);
 
   const applyPromptSuggestion = useCallback((suggestion: PromptSuggestion) => {
-    setInput(suggestion.content);
+    // 如果内容是完整的命令（如 /日报），直接发送而不是留在输入框
+    // 否则只填入内容部分（去掉 /）
+    if (suggestion.content.startsWith('/')) {
+      // 保留内容在输入框，但让菜单消失：添加一个空格
+      setInput(suggestion.content + ' ');
+    } else {
+      setInput(suggestion.content);
+    }
     setSelectedPromptIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
