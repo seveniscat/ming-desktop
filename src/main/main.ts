@@ -13,6 +13,7 @@ import { ConfigManager } from './services/ConfigManager';
 import { PromptTemplateManager } from './services/PromptTemplateManager';
 import { DebugLogService } from './services/DebugLogService';
 import { ToolExecutor } from './tools/ToolExecutor';
+import { ToolPersistenceManager } from './tools/ToolPersistenceManager';
 import { createDailyReportTool } from './tools/dailyReportTool';
 import { Logger } from './utils/Logger';
 import { initializeDatabase, closeDatabase, getDatabase } from './database/connection';
@@ -27,6 +28,7 @@ let agentManager: AgentManager;
 let skillManager: SkillManager;
 let llmManager: LLMProviderManager;
 let toolExecutor: ToolExecutor;
+let toolPersistenceManager: ToolPersistenceManager;
 let executorService: ExecutorService;
 let configManager: ConfigManager;
 let promptTemplateManager: PromptTemplateManager;
@@ -142,6 +144,8 @@ async function initializeServices(): Promise<void> {
   // 初始化 Tool Executor
   toolExecutor = new ToolExecutor();
   toolExecutor.register(createDailyReportTool(configManager, executorService));
+
+  toolPersistenceManager = new ToolPersistenceManager(toolExecutor);
 
   // 初始化 Skill 管理器
   skillManager = new SkillManager();
@@ -689,6 +693,31 @@ function setupIPCHandlers(): void {
     const db = getDatabase();
     db.prepare('DELETE FROM daily_reports WHERE id = ?').run(id);
     return { success: true };
+  });
+
+  // Tool 相关
+  ipcMain.handle(IPCChannels.TOOL_LIST, async () => {
+    return toolPersistenceManager.list();
+  });
+
+  ipcMain.handle(IPCChannels.TOOL_GET, async (_, toolId: string) => {
+    return toolPersistenceManager.get(toolId);
+  });
+
+  ipcMain.handle(IPCChannels.TOOL_CREATE, async (_, config: any) => {
+    return toolPersistenceManager.create(config);
+  });
+
+  ipcMain.handle(IPCChannels.TOOL_UPDATE, async (_, toolId: string, updates: any) => {
+    return toolPersistenceManager.update(toolId, updates);
+  });
+
+  ipcMain.handle(IPCChannels.TOOL_DELETE, async (_, toolId: string) => {
+    return toolPersistenceManager.delete(toolId);
+  });
+
+  ipcMain.handle(IPCChannels.TOOL_EXECUTE, async (_, toolId: string, params: any) => {
+    return toolPersistenceManager.execute(toolId, params);
   });
 
   // TechStack - 分析 DMG/App 安装包

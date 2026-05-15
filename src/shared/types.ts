@@ -193,6 +193,44 @@ export interface ToolCall {
   };
 }
 
+// Tool persistence types
+export interface ToolRecord {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  category: string | null;
+  parameters_schema: string | null;
+  implementation_type: 'builtin' | 'http' | 'script';
+  implementation_config: string | null;
+  is_enabled: boolean;
+  usage_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ToolCreateConfig {
+  name: string;
+  display_name: string;
+  description?: string;
+  category?: string;
+  parameters_schema?: string;
+  implementation_type?: 'builtin' | 'http' | 'script';
+  implementation_config?: string;
+  is_enabled?: boolean;
+}
+
+export interface ToolUpdateConfig {
+  display_name?: string;
+  description?: string;
+  category?: string;
+  parameters_schema?: string;
+  implementation_type?: 'builtin' | 'http' | 'script';
+  implementation_config?: string;
+  is_enabled?: boolean;
+}
+
 // Debug 相关
 export interface DebugModelCall {
   type: 'request' | 'response' | 'chunk' | 'tool' | 'error';

@@ -147,6 +147,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     analyzeApp: (filePath: string) => ipcRenderer.invoke(IPCChannels.ANALYZE_APP, filePath),
     analyzeProject: (dirPath: string) => ipcRenderer.invoke(IPCChannels.ANALYZE_PROJECT, dirPath),
   },
+
+  // Tool API
+  tools: {
+    list: () => ipcRenderer.invoke(IPCChannels.TOOL_LIST),
+    get: (toolId: string) => ipcRenderer.invoke(IPCChannels.TOOL_GET, toolId),
+    create: (config: any) => ipcRenderer.invoke(IPCChannels.TOOL_CREATE, config),
+    update: (toolId: string, updates: any) => ipcRenderer.invoke(IPCChannels.TOOL_UPDATE, toolId, updates),
+    delete: (toolId: string) => ipcRenderer.invoke(IPCChannels.TOOL_DELETE, toolId),
+    execute: (toolId: string, params: any) => ipcRenderer.invoke(IPCChannels.TOOL_EXECUTE, toolId, params),
+  },
 });
 
 // 类型定义
@@ -234,5 +244,13 @@ export interface ElectronAPI {
   techStack: {
     analyzeApp: (filePath: string) => Promise<any>;
     analyzeProject: (dirPath: string) => Promise<any>;
+  };
+  tools: {
+    list: () => Promise<any[]>;
+    get: (toolId: string) => Promise<any>;
+    create: (config: any) => Promise<string>;
+    update: (toolId: string, updates: any) => Promise<void>;
+    delete: (toolId: string) => Promise<void>;
+    execute: (toolId: string, params: any) => Promise<{ result: string; duration: number }>;
   };
 }

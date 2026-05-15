@@ -89,4 +89,12 @@ export enum IPCChannels {
   // TechStack 分析相关
   ANALYZE_APP = 'analyze:app',
   ANALYZE_PROJECT = 'analyze:project',
+
+  // Tool 相关
+  TOOL_LIST = 'tool:list',
+  TOOL_GET = 'tool:get',
+  TOOL_CREATE = 'tool:create',
+  TOOL_UPDATE = 'tool:update',
+  TOOL_DELETE = 'tool:delete',
+  TOOL_EXECUTE = 'tool:execute',
 }

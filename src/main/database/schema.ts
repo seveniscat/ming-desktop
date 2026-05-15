@@ -242,4 +242,28 @@ export function runMigrations(): void {
 
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration7Name);
   }
+
+  // Migration: add tools table for tool management
+  const migration8Name = 'add-tools-table';
+  const applied8 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration8Name);
+  if (!applied8) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tools (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        display_name TEXT NOT NULL,
+        description TEXT,
+        category TEXT,
+        parameters_schema TEXT,
+        implementation_type TEXT DEFAULT 'builtin',
+        implementation_config TEXT,
+        is_enabled INTEGER DEFAULT 1,
+        usage_count INTEGER DEFAULT 0,
+        last_used_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration8Name);
+  }
 }
