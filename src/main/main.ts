@@ -27,11 +27,13 @@ import { runMigrations } from './database/schema';
 import { migrateFromStore } from './database/migrate-from-store';
 import { GitCacheManager } from './services/GitCacheManager';
 import { scanBundles, type DetectedLibrary } from './techstack/bundleScanner';
+import { ChatService } from './chat/ChatService';
 import type { DebugLogEntry, DebugModelCall } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
 let debugWindow: BrowserWindow | null = null;
 let agentManager: AgentManager;
+let chatService: ChatService;
 let skillManager: SkillManager;
 let llmManager: LLMProviderManager;
 let toolExecutor: ToolExecutor;
@@ -184,6 +186,8 @@ async function initializeServices(): Promise<void> {
   );
   await agentManager.initialize();
 
+  chatService = new ChatService(agentManager, skillManager, llmManager, toolExecutor, recordModelDebug);
+
   Logger.info('All services initialized successfully');
 }
 
@@ -295,11 +299,11 @@ function setupIPCHandlers(): void {
 
   ipcMain.on(IPCChannels.CONVERSATION_CHAT, (event, conversationId: string, agentId: string | null, message: string, model?: string) => {
     const webContents = event.sender;
-    agentManager.chatInConversationStream(conversationId, agentId || null, message, model, webContents);
+    chatService.handleChat(conversationId, agentId || null, message, model, webContents);
   });
 
   ipcMain.on(IPCChannels.CONVERSATION_CHAT_ABORT, (_, conversationId: string) => {
-    agentManager.abortConversationChat(conversationId);
+    chatService.abortChat(conversationId);
   });
 
   // Debug 相关
