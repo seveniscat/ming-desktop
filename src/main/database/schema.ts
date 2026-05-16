@@ -340,4 +340,19 @@ export function runMigrations(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON chat_messages(conversation_id, timestamp)`);
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration11Name);
   }
+
+  // Migration: add user_identities table
+  const migration12Name = 'add-user-identities';
+  const applied12 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration12Name);
+  if (!applied12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_identities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        UNIQUE(name, email)
+      );
+    `);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration12Name);
+  }
 }
