@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
-import { PackageOpen, FolderSearch, Loader2, Upload, FileCode, Layers, Cpu, Wrench, Box, Layers3, Activity } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { PackageOpen, FolderSearch, Loader2, Upload, FileCode, Layers, Cpu, Wrench, Box, Layers3, Activity, Copy, Check } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 
 interface FrameworkDetection {
   name: string;
@@ -45,57 +45,184 @@ function ConfidenceBadge({ level }: { level: string }) {
   return <Badge variant={variant} className="text-xs">{label}</Badge>;
 }
 
+function SectionTitle({ icon: Icon, title }: { icon: any, title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <Icon size={18} className="text-primary" />
+      <h3 className="text-lg font-semibold">{title}</h3>
+    </div>
+  );
+}
+
+function generateAppMarkdown(result: AppAnalysisResult): string {
+  let md = `# ${result.appName}`;
+  if (result.version) md += ` v${result.version}`;
+  md += '\n\n';
+
+  if (result.bundleId) md += `- **Bundle ID**: ${result.bundleId}\n`;
+  md += `- **File Type**: ${result.fileType}\n`;
+  if (result.plistInfo) {
+    if (result.plistInfo.category) md += `- **Category**: ${result.plistInfo.category}\n`;
+    if (result.plistInfo.minOSVersion) md += `- **Min OS**: macOS ${result.plistInfo.minOSVersion}\n`;
+    if (result.plistInfo.electronAsarIntegrity) md += `- **Electron Asar Integrity**: Enabled\n`;
+  }
+  md += '\n';
+
+  if (result.frameworks.length > 0) {
+    md += '## Detected Frameworks\n\n';
+    result.frameworks.forEach(fw => {
+      md += `- **${fw.name}**${fw.version ? ` ${fw.version}` : ''} (${fw.confidence})\n`;
+      if (fw.evidence.length > 0) {
+        md += `  - Evidence: ${fw.evidence.slice(0, 3).join(' · ')}\n`;
+      }
+    });
+    md += '\n';
+  }
+
+  if (result.resources.type) {
+    md += '## Resources\n\n';
+    md += `- Type: ${result.resources.type}\n`;
+    md += `- Total files: ${result.resources.count}\n\n`;
+  }
+
+  if (result.categorizedDependencies && Object.keys(result.categorizedDependencies).length > 0) {
+    md += '## 技术栈分类\n\n';
+    Object.entries(result.categorizedDependencies).forEach(([category, deps]) => {
+      md += `### ${category}\n\n`;
+      deps.forEach(dep => md += `- ${dep}\n`);
+      md += '\n';
+    });
+  }
+
+  if (result.runtimeProcesses && result.runtimeProcesses.length > 0) {
+    md += '## Running Processes\n\n';
+    result.runtimeProcesses.forEach(proc => md += `- \`${proc}\`\n`);
+    md += '\n';
+  }
+
+  return md;
+}
+
+function generateProjectMarkdown(result: ProjectAnalysisResult): string {
+  let md = '# Project Analysis Report\n\n';
+
+  if (result.languages.length > 0) {
+    md += '## Languages\n\n';
+    result.languages.forEach(lang => {
+      md += `- ${lang.name}: ${lang.percentage}%\n`;
+    });
+    md += '\n';
+  }
+
+  if (result.frameworks.length > 0) {
+    md += '## Frameworks & Libraries\n\n';
+    result.frameworks.forEach(fw => md += `- ${fw}\n`);
+    md += '\n';
+  }
+
+  if (result.buildTools.length > 0) {
+    md += '## Build Tools\n\n';
+    result.buildTools.forEach(tool => md += `- ${tool}\n`);
+    md += '\n';
+  }
+
+  if (result.packageManagers.length > 0 || result.dependencies.count > 0) {
+    md += '## Dependencies\n\n';
+    if (result.packageManagers.length > 0) {
+      md += `- **Package Manager**: ${result.packageManagers.join(', ')}\n`;
+    }
+    if (result.dependencies.count > 0) {
+      md += `- **Dependencies**: ${result.dependencies.count}`;
+      if (result.dependencies.manager) md += ` via ${result.dependencies.manager}`;
+      md += '\n';
+    }
+    md += '\n';
+  }
+
+  if (Object.keys(result.categorizedDependencies).length > 0) {
+    md += '## 技术栈分类\n\n';
+    Object.entries(result.categorizedDependencies).forEach(([category, deps]) => {
+      md += `### ${category}\n\n`;
+      deps.forEach(dep => md += `- ${dep}\n`);
+      md += '\n';
+    });
+  }
+
+  return md;
+}
+
 function AppResult({ result }: { result: AppAnalysisResult }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const md = generateAppMarkdown(result);
+    await navigator.clipboard.writeText(md);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="space-y-6">
-      {/* App Info */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <PackageOpen size={20} className="text-primary" />
+      {/* Header with Copy Button */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <PackageOpen size={24} className="text-primary" />
             {result.appName}
-            {result.version && <span className="text-sm text-muted-foreground font-normal">v{result.version}</span>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {result.bundleId && (
-            <div className="text-sm text-muted-foreground">Bundle ID: {result.bundleId}</div>
+          </h2>
+          {result.version && (
+            <p className="text-lg text-muted-foreground mt-1">Version {result.version}</p>
           )}
-          <div className="text-sm text-muted-foreground">File type: {result.fileType}</div>
-          {result.plistInfo && Object.keys(result.plistInfo).length > 0 && (
-            <div className="mt-3 pt-3 border-t space-y-1.5">
-              {result.plistInfo.category && (
-                <div className="text-sm"><span className="text-muted-foreground">Category:</span> {result.plistInfo.category}</div>
-              )}
-              {result.plistInfo.minOSVersion && (
-                <div className="text-sm"><span className="text-muted-foreground">Min OS:</span> macOS {result.plistInfo.minOSVersion}</div>
-              )}
-              {result.plistInfo.electronAsarIntegrity && (
-                <div className="text-sm text-muted-foreground">Electron Asar Integrity: Enabled</div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+        <Button
+          onClick={handleCopy}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}
+          {copied ? 'Copied!' : 'Copy Report'}
+        </Button>
+      </div>
+
+      {/* App Info */}
+      <div className="rounded-lg border bg-card p-4 space-y-2">
+        {result.bundleId && (
+          <div className="text-sm">
+            <span className="text-muted-foreground">Bundle ID:</span> {result.bundleId}
+          </div>
+        )}
+        <div className="text-sm">
+          <span className="text-muted-foreground">File Type:</span> {result.fileType}
+        </div>
+        {result.plistInfo && Object.keys(result.plistInfo).length > 0 && (
+          <div className="mt-3 pt-3 border-t space-y-1.5">
+            {result.plistInfo.category && (
+              <div className="text-sm"><span className="text-muted-foreground">Category:</span> {result.plistInfo.category}</div>
+            )}
+            {result.plistInfo.minOSVersion && (
+              <div className="text-sm"><span className="text-muted-foreground">Min OS:</span> macOS {result.plistInfo.minOSVersion}</div>
+            )}
+            {result.plistInfo.electronAsarIntegrity && (
+              <div className="text-sm text-muted-foreground">Electron Asar Integrity: Enabled</div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Frameworks */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Layers size={18} className="text-primary" />
-            Detected Frameworks
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
+      {result.frameworks.length > 0 && (
+        <div className="space-y-3">
+          <SectionTitle icon={Layers} title="Detected Frameworks" />
+          <div className="rounded-lg border bg-card p-4 space-y-3">
             {result.frameworks.map((fw, i) => (
-              <div key={i} className="flex items-start justify-between p-3 rounded-lg bg-muted/50">
-                <div>
+              <div key={i} className="flex items-start justify-between p-3 rounded-md bg-muted/30">
+                <div className="flex-1">
                   <div className="font-medium flex items-center gap-2">
                     {fw.name}
                     {fw.version && <span className="text-xs text-muted-foreground">{fw.version}</span>}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-xs text-muted-foreground mt-1.5">
                     {fw.evidence.slice(0, 3).join(' · ')}
                   </div>
                 </div>
@@ -103,163 +230,148 @@ function AppResult({ result }: { result: AppAnalysisResult }) {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
       {/* Resources */}
       {result.resources.type && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileCode size={18} className="text-primary" />
-              Resources
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="space-y-3">
+          <SectionTitle icon={FileCode} title="Resources" />
+          <div className="rounded-lg border bg-card p-4">
             <div className="text-sm">{result.resources.type}</div>
             <div className="text-xs text-muted-foreground mt-1">{result.resources.count} total files</div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Categorized Dependencies */}
       {result.categorizedDependencies && Object.keys(result.categorizedDependencies).length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Layers3 size={18} className="text-primary" />
-              技术栈分类
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(result.categorizedDependencies).map(([category, deps]) => (
-                <div key={category} className="space-y-2">
-                  <div className="text-sm font-medium text-foreground">{category}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {deps.slice(0, 8).map(dep => (
-                      <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
-                    ))}
-                    {deps.length > 8 && (
-                      <Badge variant="secondary" className="text-xs">+{deps.length - 8} more</Badge>
-                    )}
-                  </div>
+        <div className="space-y-3">
+          <SectionTitle icon={Layers3} title="技术栈分类" />
+          <div className="grid grid-cols-2 gap-4">
+            {Object.entries(result.categorizedDependencies).map(([category, deps]) => (
+              <div key={category} className="space-y-2 rounded-lg border bg-card p-4">
+                <div className="text-sm font-semibold text-foreground">{category}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {deps.slice(0, 8).map(dep => (
+                    <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
+                  ))}
+                  {deps.length > 8 && (
+                    <Badge variant="secondary" className="text-xs">+{deps.length - 8} more</Badge>
+                  )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Runtime Processes */}
       {result.runtimeProcesses && result.runtimeProcesses.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Activity size={18} className="text-primary" />
-              Running Processes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5">
-              {result.runtimeProcesses.slice(0, 3).map((proc, i) => (
-                <div key={i} className="text-xs font-mono text-muted-foreground truncate">{proc}</div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <SectionTitle icon={Activity} title="Running Processes" />
+          <div className="rounded-lg border bg-card p-4 space-y-1.5">
+            {result.runtimeProcesses.slice(0, 3).map((proc, i) => (
+              <div key={i} className="text-xs font-mono text-muted-foreground truncate">{proc}</div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
 function ProjectResult({ result }: { result: ProjectAnalysisResult }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const md = generateProjectMarkdown(result);
+    await navigator.clipboard.writeText(md);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Header with Copy Button */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold flex items-center gap-2">
+          <FileCode size={24} className="text-primary" />
+          Project Analysis Report
+        </h2>
+        <Button
+          onClick={handleCopy}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}
+          {copied ? 'Copied!' : 'Copy Report'}
+        </Button>
+      </div>
+
       {/* Languages */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileCode size={18} className="text-primary" />
-            Languages
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {/* Bar chart */}
-            <div className="flex rounded-full overflow-hidden h-3 bg-muted">
-              {result.languages.map((lang) => (
-                <div
-                  key={lang.name}
-                  style={{
-                    width: `${lang.percentage}%`,
-                    backgroundColor: LANG_COLORS[lang.name] || '#8b8b8b',
-                  }}
-                  title={`${lang.name}: ${lang.percentage}%`}
-                />
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {result.languages.map(lang => (
-                <div key={lang.name} className="flex items-center gap-1.5 text-sm">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: LANG_COLORS[lang.name] || '#8b8b8b' }} />
-                  <span>{lang.name}</span>
-                  <span className="text-muted-foreground">{lang.percentage}%</span>
-                </div>
-              ))}
-            </div>
+      <div className="space-y-3">
+        <SectionTitle icon={FileCode} title="Languages" />
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          {/* Bar chart */}
+          <div className="flex rounded-full overflow-hidden h-3 bg-muted">
+            {result.languages.map((lang) => (
+              <div
+                key={lang.name}
+                style={{
+                  width: `${lang.percentage}%`,
+                  backgroundColor: LANG_COLORS[lang.name] || '#8b8b8b',
+                }}
+                title={`${lang.name}: ${lang.percentage}%`}
+              />
+            ))}
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex flex-wrap gap-3">
+            {result.languages.map(lang => (
+              <div key={lang.name} className="flex items-center gap-1.5 text-sm">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: LANG_COLORS[lang.name] || '#8b8b8b' }} />
+                <span>{lang.name}</span>
+                <span className="text-muted-foreground">{lang.percentage}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* Frameworks */}
       {result.frameworks.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Cpu size={18} className="text-primary" />
-              Frameworks & Libraries
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="space-y-3">
+          <SectionTitle icon={Cpu} title="Frameworks & Libraries" />
+          <div className="rounded-lg border bg-card p-4">
             <div className="flex flex-wrap gap-2">
               {result.frameworks.map(fw => (
                 <Badge key={fw} variant="secondary" className="text-sm">{fw}</Badge>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Build Tools */}
       {result.buildTools.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Wrench size={18} className="text-primary" />
-              Build Tools
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="space-y-3">
+          <SectionTitle icon={Wrench} title="Build Tools" />
+          <div className="rounded-lg border bg-card p-4">
             <div className="flex flex-wrap gap-2">
               {result.buildTools.map(tool => (
                 <Badge key={tool} variant="outline" className="text-sm">{tool}</Badge>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Package Managers & Dependencies */}
       {(result.packageManagers.length > 0 || result.dependencies.count > 0) && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Box size={18} className="text-primary" />
-              Dependencies
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <div className="space-y-3">
+          <SectionTitle icon={Box} title="Dependencies" />
+          <div className="rounded-lg border bg-card p-4 space-y-3">
             {result.packageManagers.length > 0 && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">Package Manager:</span>
@@ -279,34 +391,27 @@ function ProjectResult({ result }: { result: ProjectAnalysisResult }) {
                 )}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Categorized Dependencies */}
       {Object.keys(result.categorizedDependencies).length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Layers3 size={18} className="text-primary" />
-              技术栈分类
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(result.categorizedDependencies).map(([category, deps]) => (
-                <div key={category} className="space-y-2">
-                  <div className="text-sm font-medium text-foreground">{category}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {deps.map(dep => (
-                      <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
-                    ))}
-                  </div>
+        <div className="space-y-3">
+          <SectionTitle icon={Layers3} title="技术栈分类" />
+          <div className="grid grid-cols-2 gap-4">
+            {Object.entries(result.categorizedDependencies).map(([category, deps]) => (
+              <div key={category} className="space-y-2 rounded-lg border bg-card p-4">
+                <div className="text-sm font-semibold text-foreground">{category}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {deps.map(dep => (
+                    <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -400,14 +505,14 @@ export default function TechStackAnalyzer() {
           </TabsList>
 
           <TabsContent value="app">
-            <Card
-              className={`border-2 border-dashed transition-colors cursor-pointer ${dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
+            <div
+              className={`border-2 border-dashed rounded-lg transition-colors cursor-pointer ${dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={handleOpenApp}
             >
-              <CardContent className="py-16 flex flex-col items-center gap-4">
+              <div className="py-16 flex flex-col items-center gap-4">
                 {loading ? (
                   <>
                     <Loader2 size={40} className="text-primary animate-spin" />
@@ -422,22 +527,22 @@ export default function TechStackAnalyzer() {
                     </div>
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {error && (
               <div className="mt-4 p-4 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
             )}
 
-            {appResult && <div className="mt-6"><AppResult result={appResult} /></div>}
+            {appResult && <div className="mt-8"><AppResult result={appResult} /></div>}
           </TabsContent>
 
           <TabsContent value="project">
-            <Card
-              className="border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 transition-colors cursor-pointer"
+            <div
+              className="border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 transition-colors cursor-pointer rounded-lg"
               onClick={handleOpenProject}
             >
-              <CardContent className="py-16 flex flex-col items-center gap-4">
+              <div className="py-16 flex flex-col items-center gap-4">
                 {loading ? (
                   <>
                     <Loader2 size={40} className="text-primary animate-spin" />
@@ -452,14 +557,14 @@ export default function TechStackAnalyzer() {
                     </div>
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {error && (
               <div className="mt-4 p-4 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
             )}
 
-            {projectResult && <div className="mt-6"><ProjectResult result={projectResult} /></div>}
+            {projectResult && <div className="mt-8"><ProjectResult result={projectResult} /></div>}
           </TabsContent>
         </Tabs>
       </div>
