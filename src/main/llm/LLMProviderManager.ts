@@ -4,6 +4,21 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ToolCall } from '../../shared/types';
 import { Logger } from '../utils/Logger';
+
+export interface StreamToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface StreamWithToolsResult {
+  fullContent: string;
+  toolCalls: StreamToolCall[];
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+}
 import { ConfigManager } from '../services/ConfigManager';
 import { getDatabase } from '../database/connection';
 
@@ -262,6 +277,205 @@ export class LLMProviderManager extends EventEmitter {
       });
       throw error;
     }
+  }
+
+  async chatStreamWithTools(
+    providerId: string,
+    messages: ChatMessage[],
+    model: string | undefined,
+    tools: ToolDefinition[] | undefined,
+    onChunk: (text: string) => void,
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<StreamWithToolsResult> {
+    const provider = this.providers.get(providerId);
+    if (!provider) throw new Error(`Provider not found: ${providerId}`);
+
+    const client = this.clients.get(providerId);
+    if (!client) throw new Error(`Provider client not initialized: ${providerId}`);
+
+    const resolvedModel = model || provider.models[0] || 'gpt-4';
+
+    onDebug({
+      type: 'request',
+      timestamp: Date.now(),
+      data: {
+        provider: provider.name,
+        model: resolvedModel,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        tools: tools?.map(t => t.function.name),
+      },
+    });
+
+    const startTime = Date.now();
+
+    try {
+      let result: StreamWithToolsResult;
+
+      if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
+        result = await this.chatStreamWithToolsOpenAI(client as OpenAI, provider, messages, resolvedModel, tools, onChunk, onDebug, signal);
+      } else if (provider.type === 'anthropic') {
+        result = await this.chatStreamWithToolsAnthropic(client as Anthropic, provider, messages, resolvedModel, tools, onChunk, onDebug, signal);
+      } else {
+        throw new Error(`Unsupported provider type: ${provider.type}`);
+      }
+
+      onDebug({
+        type: 'response',
+        timestamp: Date.now(),
+        data: {
+          provider: provider.name,
+          model: resolvedModel,
+          content: result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : ''),
+          tools: result.toolCalls.map(tc => tc.function.name),
+          usage: result.usage,
+          duration: Date.now() - startTime,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      onDebug({
+        type: 'error',
+        timestamp: Date.now(),
+        data: { provider: provider.name, model: resolvedModel, error: errorMsg, duration: Date.now() - startTime },
+      });
+      throw error;
+    }
+  }
+
+  private async chatStreamWithToolsOpenAI(
+    client: OpenAI,
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    tools: ToolDefinition[] | undefined,
+    onChunk: (text: string) => void,
+    _onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<StreamWithToolsResult> {
+    const createOptions: any = {
+      model,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      temperature: 0.7,
+      max_tokens: 2048,
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools;
+    }
+
+    const stream = await client.chat.completions.create(createOptions, { signal });
+
+    let fullContent = '';
+    let usage: any = undefined;
+    const toolCallAccumulators: Map<number, { id: string; name: string; arguments: string }> = new Map();
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta;
+
+      const reasoning = (delta as any)?.reasoning_content;
+      if (reasoning) {
+        fullContent += reasoning;
+        onChunk(reasoning);
+      }
+
+      if (delta?.content) {
+        fullContent += delta.content;
+        onChunk(delta.content);
+      }
+
+      if ((delta as any)?.tool_calls) {
+        for (const tc of (delta as any).tool_calls) {
+          const idx = tc.index;
+          if (!toolCallAccumulators.has(idx)) {
+            toolCallAccumulators.set(idx, { id: tc.id || '', name: tc.function?.name || '', arguments: '' });
+          }
+          const acc = toolCallAccumulators.get(idx)!;
+          if (tc.id) acc.id = tc.id;
+          if (tc.function?.name) acc.name = tc.function.name;
+          if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+        }
+      }
+
+      if ((chunk as any).usage) {
+        usage = {
+          promptTokens: (chunk as any).usage.prompt_tokens,
+          completionTokens: (chunk as any).usage.completion_tokens,
+          totalTokens: (chunk as any).usage.total_tokens,
+        };
+      }
+    }
+
+    const toolCalls: StreamToolCall[] = Array.from(toolCallAccumulators.values())
+      .filter(acc => acc.id && acc.name)
+      .map(acc => ({
+        id: acc.id,
+        type: 'function' as const,
+        function: { name: acc.name, arguments: acc.arguments },
+      }));
+
+    return { fullContent, toolCalls, usage };
+  }
+
+  private async chatStreamWithToolsAnthropic(
+    client: Anthropic,
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    tools: ToolDefinition[] | undefined,
+    onChunk: (text: string) => void,
+    _onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<StreamWithToolsResult> {
+    const createOptions: any = {
+      model,
+      max_tokens: 2048,
+      messages: messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      system: messages.find(m => m.role === 'system')?.content || '',
+    };
+
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+    }
+
+    const stream = client.messages.stream(createOptions, { signal });
+
+    let fullContent = '';
+
+    stream.on('text', (text: string) => {
+      fullContent += text;
+      onChunk(text);
+    });
+
+    const finalMessage = await stream.finalMessage();
+
+    const toolCalls: StreamToolCall[] = finalMessage.content
+      .filter((block: any) => block.type === 'tool_use')
+      .map((block: any) => ({
+        id: block.id,
+        type: 'function' as const,
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      }));
+
+    const usage = finalMessage.usage ? {
+      promptTokens: finalMessage.usage.input_tokens,
+      completionTokens: finalMessage.usage.output_tokens,
+      totalTokens: (finalMessage.usage.input_tokens || 0) + (finalMessage.usage.output_tokens || 0),
+    } : undefined;
+
+    return { fullContent, toolCalls, usage };
   }
 
   private async chatStreamOpenAI(
