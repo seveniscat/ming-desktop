@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Calendar as CalendarIcon, GitBranch, FileText, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, X } from 'lucide-react';
+import { Calendar as CalendarIcon, GitBranch, FileText, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, X, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Separator } from './ui/separator';
@@ -92,8 +93,9 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   } | null>(null);
   const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
   const [myIdentities, setMyIdentities] = useState<{ name: string; email: string }[]>([]);
-  const [identitySheetOpen, setIdentitySheetOpen] = useState(false);
+  const [identityDialogOpen, setIdentityDialogOpen] = useState(false);
   const [selectedIdentities, setSelectedIdentities] = useState<Set<string>>(new Set());
+  const [identitySearch, setIdentitySearch] = useState('');
 
   const fetchHeatmap = useCallback(async (forceRefresh = false) => {
     // Clear memory cache if forcing refresh
@@ -221,10 +223,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
       // Load all git authors when work paths are available
       window.electronAPI.git.getAllAuthors().then(async authors => {
         setGitAuthors(authors || []);
-        // Auto-open identity selector if no identities saved and multiple authors exist
-        if (myIdentities.length === 0 && authors.length > 1) {
-          setIdentitySheetOpen(true);
-        }
       }).catch(() => {});
     } else {
       setGitRepos([]);
@@ -545,7 +543,8 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                           className="ml-auto h-6 text-xs"
                           onClick={() => {
                             setSelectedIdentities(new Set(myIdentities.map(i => `${i.name}|${i.email}`)));
-                            setIdentitySheetOpen(true);
+                            setIdentitySearch('');
+                            setIdentityDialogOpen(true);
                           }}
                         >
                           Manage
@@ -844,21 +843,37 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
           </SheetContent>
         </Sheet>
 
-        {/* Identity Selector Sheet */}
-        <Sheet open={identitySheetOpen} onOpenChange={setIdentitySheetOpen}>
-          <SheetContent side="right" className="w-full sm:max-w-md">
-            <SheetHeader>
-              <SheetTitle className="flex items-center gap-2">
+        {/* Identity Selector Dialog */}
+        <Dialog open={identityDialogOpen} onOpenChange={setIdentityDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
                 <User size={18} />
                 Select Your Identities
-              </SheetTitle>
-              <SheetDescription>
+              </DialogTitle>
+              <DialogDescription>
                 Choose which git identities belong to you. This affects heatmap, commits, and reports.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="mt-6">
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search authors..."
+                value={identitySearch}
+                onChange={e => setIdentitySearch(e.target.value)}
+                className="w-full rounded-md border border-[hsl(var(--border))] bg-transparent pl-9 pr-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="mt-3 max-h-[50vh] overflow-y-auto">
               <div className="flex flex-wrap gap-2">
-                {gitAuthors.map((author, i) => {
+                {gitAuthors
+                  .filter(a => {
+                    if (!identitySearch) return true;
+                    const q = identitySearch.toLowerCase();
+                    return a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q);
+                  })
+                  .map((author, i) => {
                   const key = `${author.name}|${author.email}`;
                   const isSelected = selectedIdentities.has(key);
                   return (
@@ -886,14 +901,13 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                 })}
               </div>
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-4 flex justify-end">
               <Button
                 onClick={async () => {
                   const identities = gitAuthors.filter(a => selectedIdentities.has(`${a.name}|${a.email}`));
                   await window.electronAPI.git.setMyIdentities(identities);
                   setMyIdentities(identities);
-                  setIdentitySheetOpen(false);
-                  // Clear caches and refresh data
+                  setIdentityDialogOpen(false);
                   cachedStatsData = null;
                   cachedHeatmapData = null;
                   fetchStats(true);
@@ -904,8 +918,8 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                 Confirm ({selectedIdentities.size} selected)
               </Button>
             </div>
-          </SheetContent>
-        </Sheet>
+          </DialogContent>
+        </Dialog>
 
         {/* Git Repo List Sheet */}
         <Sheet open={activeSheet === 'repos'} onOpenChange={(open) => !open && setActiveSheet(null)}>
