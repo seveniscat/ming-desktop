@@ -25,7 +25,7 @@ export function runMigrations(): void {
 
     CREATE TABLE IF NOT EXISTS chat_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      agent_id TEXT NOT NULL,
+      agent_id TEXT,
       role TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
       content TEXT NOT NULL,
       timestamp TEXT NOT NULL DEFAULT (datetime('now')),
@@ -318,5 +318,26 @@ export function runMigrations(): void {
       insertTool.run(tool.id, tool.name, tool.display_name, tool.description, tool.category, tool.schema);
     }
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration10Name);
+  }
+
+  // Migration: allow NULL agent_id in chat_messages
+  const migration11Name = 'chat-messages-nullable-agent-id';
+  const applied11 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration11Name);
+  if (!applied11) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS chat_messages_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT,
+        role TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
+        content TEXT NOT NULL,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        conversation_id TEXT
+      );
+      INSERT INTO chat_messages_new SELECT * FROM chat_messages;
+      DROP TABLE chat_messages;
+      ALTER TABLE chat_messages_new RENAME TO chat_messages;
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON chat_messages(conversation_id, timestamp)`);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration11Name);
   }
 }

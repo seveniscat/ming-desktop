@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Calendar as CalendarIcon, GitBranch, FileText, TrendingUp, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, X } from 'lucide-react';
+import { Calendar as CalendarIcon, GitBranch, FileText, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Card, CardHeader, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
@@ -379,63 +379,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
             <h1 className="text-3xl font-bold text-foreground">WorkGround</h1>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={timeRange} onValueChange={setTimeRange}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">今天</SelectItem>
-                <SelectItem value="yesterday">昨天</SelectItem>
-                <SelectItem value="day_before_yesterday">前天</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="custom">自定义</SelectItem>
-              </SelectContent>
-            </Select>
-            {timeRange === 'custom' && (
-              <>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn('h-8 gap-1 text-xs', !customSince && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon size={14} />
-                      {customSince ? format(customSince, 'MM/dd') : '开始'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={customSince}
-                      onSelect={setCustomSince}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <span className="text-xs text-muted-foreground">~</span>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn('h-8 gap-1 text-xs', !customUntil && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon size={14} />
-                      {customUntil ? format(customUntil, 'MM/dd') : '结束'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={customUntil}
-                      onSelect={setCustomUntil}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </>
-            )}
             <Button
               variant="ghost"
               size="icon"
@@ -503,35 +446,21 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
           </CardContent>
         </Card>
 
-        {/* Work Paths Management */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText size={16} className="text-muted-foreground" />
-                <span className="text-sm font-medium text-secondary-foreground">
-                  Work Paths ({workPaths.length})
-                </span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleAddPath}
-                className="flex items-center gap-2"
-              >
-                <Plus size={14} />
-                Add Folder
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {workPaths.length === 0 ? (
-              <div className="py-6 text-center">
-                <p className="text-sm text-muted-foreground mb-3">
-                  未配置工作目录，请添加 Work Paths 以启用统计功能
-                </p>
+        {/* Work Paths and Git Repos - Side by Side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Work Paths Management */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText size={16} className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-secondary-foreground">
+                    Work Paths ({workPaths.length})
+                  </span>
+                </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
+                  size="sm"
                   onClick={handleAddPath}
                   className="flex items-center gap-2"
                 >
@@ -539,58 +468,134 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                   Add Folder
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {/* Work Paths List */}
-                <div className="space-y-2">
-                  {workPaths.map((p, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--surface-hover)] border border-[hsl(var(--border))]"
-                    >
-                      <Folder size={14} className="flex-shrink-0 text-muted-foreground" />
-                      <span className="flex-1 text-sm truncate text-foreground">{p}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemovePath(i)}
-                        className="flex-shrink-0 h-6 w-6 text-muted-foreground hover:text-destructive"
-                        title="Remove"
-                      >
-                        <X size={14} />
-                      </Button>
-                    </div>
-                  ))}
+            </CardHeader>
+            <CardContent className="pt-0">
+              {workPaths.length === 0 ? (
+                <div className="py-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    未配置工作目录，请添加 Work Paths 以启用统计功能
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={handleAddPath}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus size={14} />
+                    Add Folder
+                  </Button>
                 </div>
-
-                {/* Git Author Switcher */}
-                {gitAuthors.length > 0 && (
-                  <div className="pt-3 border-t border-[hsl(var(--border))]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <User size={14} className="text-muted-foreground" />
-                      <span className="text-sm font-medium text-secondary-foreground">
-                        Git User
-                      </span>
-                    </div>
-                    <Select value={selectedAuthor} onValueChange={setSelectedAuthor}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a user" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">All Users</SelectItem>
-                        {gitAuthors.map((author, i) => (
-                          <SelectItem key={i} value={author.name}>
-                            {author.name} {author.email ? `(${author.email})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              ) : (
+                <div className="space-y-3">
+                  {/* Work Paths List */}
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {workPaths.map((p, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--surface-hover)] border border-[hsl(var(--border))]"
+                      >
+                        <Folder size={14} className="flex-shrink-0 text-muted-foreground" />
+                        <span className="flex-1 text-sm truncate text-foreground">{p}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemovePath(i)}
+                          className="flex-shrink-0 h-6 w-6 text-muted-foreground hover:text-destructive"
+                          title="Remove"
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                )}
+
+                  {/* Git Author Switcher */}
+                  {gitAuthors.length > 0 && (
+                    <div className="pt-3 border-t border-[hsl(var(--border))]">
+                      <div className="flex items-center gap-2 mb-2">
+                        <User size={14} className="text-muted-foreground" />
+                        <span className="text-sm font-medium text-secondary-foreground">
+                          Git User
+                        </span>
+                      </div>
+                      <Select value={selectedAuthor} onValueChange={setSelectedAuthor}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a user" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">All Users</SelectItem>
+                          {gitAuthors.map((author, i) => (
+                            <SelectItem key={i} value={author.name}>
+                              {author.name} {author.email ? `(${author.email})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Git Repositories */}
+          <Card
+            className="cursor-pointer select-none hover:border-emerald-500/50 transition-colors"
+            onClick={() => setActiveSheet('repos')}
+            title="Click to view full repository list"
+          >
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Folder size={16} className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-secondary-foreground">
+                    Git Repositories ({gitRepos.length})
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground">{stats.totalRepos} active</span>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {sortedGitRepos.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  No git repositories found in configured work paths.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {sortedGitRepos.slice(0, 8).map((repo, i) => {
+                    const hasCommits = commits.some(c => c.repo === repo.name);
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          'flex items-center gap-2 p-2.5 rounded-lg border',
+                          hasCommits
+                            ? 'bg-primary/5 border-primary/30'
+                            : 'bg-[var(--surface-hover)] border-[hsl(var(--border))]'
+                        )}
+                      >
+                        <Folder size={14} className="text-muted-foreground flex-shrink-0" />
+                        <span className={cn('font-medium truncate text-sm', hasCommits ? 'text-foreground' : 'text-foreground/70')}>
+                          {repo.name}
+                        </span>
+                        {hasCommits && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 flex-shrink-0">
+                            <Activity size={10} className="mr-0.5" />
+                            active
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {gitRepos.length > 8 && (
+                    <div className="text-xs text-muted-foreground text-center pt-2">
+                      +{gitRepos.length - 8} more repositories
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -604,9 +609,66 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                 <div className="p-3 rounded-lg bg-accent">
                   <GitBranch size={24} className="text-primary" />
                 </div>
+                <Select value={timeRange} onValueChange={setTimeRange}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">今天</SelectItem>
+                    <SelectItem value="yesterday">昨天</SelectItem>
+                    <SelectItem value="day_before_yesterday">前天</SelectItem>
+                    <SelectItem value="week">This Week</SelectItem>
+                    <SelectItem value="custom">自定义</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="text-3xl font-bold mb-1 text-foreground">{stats.totalCommits}</div>
               <div className="text-sm text-muted-foreground">Commits</div>
+              {timeRange === 'custom' && (
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn('h-7 gap-1 text-xs flex-1', !customSince && 'text-muted-foreground')}
+                      >
+                        <CalendarIcon size={12} />
+                        {customSince ? format(customSince, 'MM/dd') : '开始'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={customSince}
+                        onSelect={setCustomSince}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <span className="text-xs text-muted-foreground">~</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn('h-7 gap-1 text-xs flex-1', !customUntil && 'text-muted-foreground')}
+                      >
+                        <CalendarIcon size={12} />
+                        {customUntil ? format(customUntil, 'MM/dd') : '结束'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={customUntil}
+                        onSelect={setCustomUntil}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
             </CardContent>
           </Card>
 
