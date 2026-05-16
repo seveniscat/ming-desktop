@@ -280,5 +280,21 @@ export function runMigrations(): void {
     addColumn('tags', "TEXT DEFAULT '[]'");
     addColumn('usage_count', 'INTEGER DEFAULT 0');
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration9Name);
+
+    // Seed default prompts if table is empty
+    const promptCount = db.prepare('SELECT COUNT(*) as count FROM prompt_templates').get() as any;
+    if (promptCount.count === 0) {
+      const extractVars = (content: string) => {
+        const m = content.match(/\{(\w+)\}/g);
+        return m ? JSON.stringify([...new Set(m.map((s: string) => s.slice(1, -1)))]) : '[]';
+      };
+      const insertSeed = db.prepare(`
+        INSERT INTO prompt_templates (id, name, type, trigger, description, content, variables, category, tags, enabled)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `);
+      insertSeed.run('prompt-code-review', 'Code Review', 'task', 'review', 'Review code for quality, bugs, and improvements', 'Please review the following code from {project_name}. Focus on:\n1. Code quality and readability\n2. Potential bugs or issues\n3. Performance considerations\n4. Suggestions for improvement\n\nCode:\n{code}', extractVars('Please review the following code from {project_name}. Focus on:\n1. Code quality and readability\n2. Potential bugs or issues\n3. Performance considerations\n4. Suggestions for improvement\n\nCode:\n{code}'), 'coding', JSON.stringify(['review', 'quality']));
+      insertSeed.run('prompt-explain', 'Explain Code', 'task', 'explain', 'Explain code in plain language', 'Please explain the following code in simple terms. What does it do, how does it work, and why might it be written this way?\n\n{code}', extractVars('Please explain the following code in simple terms. What does it do, how does it work, and why might it be written this way?\n\n{code}'), 'coding', JSON.stringify(['explain', 'learning']));
+      insertSeed.run('prompt-assistant', 'Helpful Assistant', 'system', 'assistant', 'A friendly, helpful AI assistant', 'You are a helpful, friendly AI assistant. Be concise but thorough. Use examples when helpful. If you are unsure about something, say so.', '[]', 'general', JSON.stringify(['general', 'assistant']));
+    }
   }
 }
