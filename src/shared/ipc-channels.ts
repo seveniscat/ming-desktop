@@ -19,6 +19,7 @@ export enum IPCChannels {
   PROMPT_LIST = 'prompt:list',
   PROMPT_DELETE = 'prompt:delete',
   PROMPT_UPDATE = 'prompt:update',
+  PROMPT_TEST = 'prompt:test',
 
   // LLM Provider 相关
   LLM_LIST_PROVIDERS = 'llm:list-providers',

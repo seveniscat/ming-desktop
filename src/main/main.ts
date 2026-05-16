@@ -257,6 +257,20 @@ function setupIPCHandlers(): void {
     return promptTemplateManager.deletePrompt(promptId);
   });
 
+  ipcMain.handle(IPCChannels.PROMPT_TEST, async (_, renderedContent: string, model?: string) => {
+    const providerId = llmManager.getDefaultProviderId();
+    if (!providerId) {
+      throw new Error('No LLM provider configured');
+    }
+    const messages = [{ role: 'user' as const, content: renderedContent }];
+    const result = await llmManager.chat(providerId, messages, model);
+    if (typeof result === 'string') {
+      return result;
+    }
+    // If the response contains tool calls, stringify them for display
+    return JSON.stringify(result);
+  });
+
   // Conversation 相关
   ipcMain.handle(IPCChannels.CONVERSATION_CREATE, async () => {
     return agentManager.createConversation();

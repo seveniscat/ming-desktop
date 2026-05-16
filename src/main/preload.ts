@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke(IPCChannels.PROMPT_UPDATE, promptId, updates),
     delete: (promptId: string) =>
       ipcRenderer.invoke(IPCChannels.PROMPT_DELETE, promptId),
+    test: (renderedContent: string, model?: string) =>
+      ipcRenderer.invoke(IPCChannels.PROMPT_TEST, renderedContent, model),
   },
 
   // Conversation API
@@ -193,6 +195,7 @@ export interface ElectronAPI {
     list: () => Promise<any[]>;
     update: (promptId: string, updates: any) => Promise<void>;
     delete: (promptId: string) => Promise<void>;
+    test: (renderedContent: string, model?: string) => Promise<string>;
   };
   conversations: {
     create: () => Promise<any>;

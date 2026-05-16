@@ -54,19 +54,27 @@ export interface SkillSyncResult {
 export interface PromptTemplate {
   id: string;
   name: string;
+  type: 'system' | 'task';
   trigger: string;
   description: string;
   content: string;
+  variables: string[];
+  category: string | null;
+  tags: string[];
   enabled: boolean;
+  usage_count: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface PromptTemplateConfig {
   name: string;
+  type?: 'system' | 'task';
   trigger?: string;
   description?: string;
   content: string;
+  category?: string;
+  tags?: string[];
   enabled?: boolean;
 }
 

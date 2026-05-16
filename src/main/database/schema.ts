@@ -266,4 +266,19 @@ export function runMigrations(): void {
     `);
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration8Name);
   }
+
+  // Migration: extend prompt_templates with type, variables, category, tags, usage_count
+  const migration9Name = 'extend-prompt-templates';
+  const applied9 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration9Name);
+  if (!applied9) {
+    const addColumn = (col: string, def: string) => {
+      try { db.exec(`ALTER TABLE prompt_templates ADD COLUMN ${col} ${def}`); } catch { /* already exists */ }
+    };
+    addColumn('type', "TEXT NOT NULL DEFAULT 'task'");
+    addColumn('variables', "TEXT DEFAULT '[]'");
+    addColumn('category', 'TEXT');
+    addColumn('tags', "TEXT DEFAULT '[]'");
+    addColumn('usage_count', 'INTEGER DEFAULT 0');
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration9Name);
+  }
 }
