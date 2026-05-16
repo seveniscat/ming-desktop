@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     rename: (conversationId: string, title: string) =>
       ipcRenderer.invoke(IPCChannels.CONVERSATION_RENAME, conversationId, title),
     // Changed: fire-and-forget, response comes via stream events
-    chat: (conversationId: string, agentId: string, message: string, model?: string) => {
+    chat: (conversationId: string, agentId: string | null, message: string, model?: string) => {
       ipcRenderer.send(IPCChannels.CONVERSATION_CHAT, conversationId, agentId, message, model);
     },
     abort: (conversationId: string) => {
@@ -195,7 +195,7 @@ export interface ElectronAPI {
     messages: (conversationId: string) => Promise<any[]>;
     delete: (conversationId: string) => Promise<void>;
     rename: (conversationId: string, title: string) => Promise<void>;
-    chat: (conversationId: string, agentId: string, message: string, model?: string) => void;
+    chat: (conversationId: string, agentId: string | null, message: string, model?: string) => void;
     abort: (conversationId: string) => void;
     onStreamChunk: (callback: (data: any) => void) => () => void;
     onStreamEnd: (callback: (data: any) => void) => () => void;

@@ -1,5 +1,5 @@
 import { useState, useCallback, type MutableRefObject } from 'react';
-import type { Message, Agent, ExecutionState } from '../types';
+import type { Message, ExecutionState } from '../types';
 
 function compactDetail(value: unknown, maxLength = 220): string {
   if (value == null) return '';
@@ -9,21 +9,17 @@ function compactDetail(value: unknown, maxLength = 220): string {
 }
 
 interface SendMessageParams {
-  agentId: string;
   message: string;
   model?: string;
   resetMessages?: boolean;
   forceNewConversation?: boolean;
-  reuseAgentConversation?: boolean;
 }
 
 export function useChatMessages({
   currentConversationId,
   setCurrentConversationId,
   activeConversationRef,
-  agents,
   selectedModel,
-  setSelectedAgentId,
   setSelectedModel,
   setExecutionState,
   getLatestConversations,
@@ -34,9 +30,7 @@ export function useChatMessages({
   currentConversationId: string | null;
   setCurrentConversationId: (id: string | null) => void;
   activeConversationRef: MutableRefObject<string | null>;
-  agents: Agent[];
   selectedModel: string | null;
-  setSelectedAgentId: (id: string | null) => void;
   setSelectedModel: (model: string | null) => void;
   setExecutionState: React.Dispatch<React.SetStateAction<ExecutionState>>;
   getLatestConversations: () => Promise<any[]>;
@@ -48,33 +42,15 @@ export function useChatMessages({
   const [isLoading, setIsLoading] = useState(false);
 
   const sendConversationMessage = useCallback(async ({
-    agentId,
     message,
     model,
     resetMessages = false,
     forceNewConversation = false,
-    reuseAgentConversation = false,
   }: SendMessageParams) => {
     if (isLoading) return;
 
-    let convId = forceNewConversation || reuseAgentConversation ? null : currentConversationId;
+    let convId = forceNewConversation ? null : currentConversationId;
     let baseMessages: Message[] | null = null;
-
-    if (!forceNewConversation && reuseAgentConversation) {
-      try {
-        const latest = await getLatestConversations();
-        const reusable = latest.find((conv) => conv.agentId === agentId);
-        if (reusable) {
-          convId = reusable.id;
-          if (currentConversationId !== reusable.id) {
-            baseMessages = await loadConversationMessages(reusable.id);
-          }
-          setCurrentConversationId(reusable.id);
-        }
-      } catch (error) {
-        console.error('Failed to find reusable conversation:', error);
-      }
-    }
 
     if (!convId) {
       try {
@@ -89,7 +65,6 @@ export function useChatMessages({
       }
     }
 
-    setSelectedAgentId(agentId);
     if (model) {
       setSelectedModel(model);
     }
@@ -101,7 +76,6 @@ export function useChatMessages({
           type: 'request',
           timestamp: Date.now(),
           title: '准备发送消息',
-          detail: `Agent: ${agents.find(a => a.id === agentId)?.name || agentId}`,
           status: 'active',
         },
       ],
@@ -201,8 +175,9 @@ export function useChatMessages({
     });
 
     if (!convId) return;
-    window.electronAPI.conversations.chat(convId, agentId, message, model || selectedModel || undefined);
-  }, [isLoading, currentConversationId, agents, selectedModel, activeConversationRef, setCurrentConversationId, setSelectedAgentId, setSelectedModel, setExecutionState, getLatestConversations, loadConversationMessages, setConversations, loadConversations]);
+    // Send with null agentId — direct LLM + tools mode
+    window.electronAPI.conversations.chat(convId, null, message, model || selectedModel || undefined);
+  }, [isLoading, currentConversationId, selectedModel, activeConversationRef, setCurrentConversationId, setSelectedModel, setExecutionState, getLatestConversations, loadConversationMessages, setConversations, loadConversations]);
 
   const handleAbortChat = useCallback(() => {
     if (!currentConversationId) return;

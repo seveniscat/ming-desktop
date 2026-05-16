@@ -8,17 +8,15 @@ import ChatHeader from './ChatHeader';
 import ChatMessages from './ChatMessages';
 import ChatInput from './ChatInput';
 import AgentStatusBar from './AgentStatusBar';
-import type { Agent, LLMProvider, ChatLaunchRequest, Conversation } from './types';
+import type { LLMProvider, Conversation } from './types';
 import type { PromptTemplate } from '../../../shared/types';
 
 interface ChatLayoutProps {
-  launchRequest?: ChatLaunchRequest | null;
+  launchRequest?: any | null;
   onLaunchHandled?: () => void;
 }
 
 export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayoutProps) {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
@@ -54,9 +52,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     currentConversationId,
     setCurrentConversationId,
     activeConversationRef,
-    agents,
     selectedModel,
-    setSelectedAgentId,
     setSelectedModel,
     setExecutionState,
     getLatestConversations,
@@ -78,25 +74,12 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
   // Load initial data
   useEffect(() => {
-    loadAgents();
     loadConversations();
     loadProviders();
     loadPromptTemplates();
   }, []);
 
-  const loadAgents = async () => {
-    try {
-      const result = await window.electronAPI.agents.list();
-      setAgents(result);
-      if (result.length > 0 && !selectedAgentId) {
-        setSelectedAgentId(result[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-    }
-  };
-
-  // 持久化模型选择到 localStorage
+  // Persist model selection
   useEffect(() => {
     if (selectedModel) {
       localStorage.setItem('selectedModel', selectedModel);
@@ -108,8 +91,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
       const result = await window.electronAPI.llm.listProviders();
       const enabledProviders = result.filter((p: LLMProvider) => p.enabled);
       setProviders(enabledProviders);
-      
-      // 从 localStorage 恢复上次选择的模型
+
       const savedModel = localStorage.getItem('selectedModel');
       if (savedModel && enabledProviders.some((p: LLMProvider) => (p.enabledModels || []).includes(savedModel))) {
         setSelectedModel(savedModel);
@@ -137,9 +119,6 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     setCurrentConversationId(conv.id);
     resetExecution();
     activeConversationRef.current = null;
-    if (conv.agentId) {
-      setSelectedAgentId(conv.agentId);
-    }
     try {
       setMessages(await loadConversationMessages(conv.id));
     } catch (error) {
@@ -157,15 +136,14 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   }, [handleNewConversation, setMessages, resetExecution]);
 
   const handleSendMessage = useCallback(async () => {
-    if (!input.trim() || !selectedAgentId || isLoading) return;
+    if (!input.trim() || isLoading) return;
 
     await sendConversationMessage({
-      agentId: selectedAgentId,
       message: input,
       model: selectedModel || undefined,
     });
     setInput('');
-  }, [input, selectedAgentId, isLoading, agents, selectedModel, sendConversationMessage, setInput]);
+  }, [input, isLoading, selectedModel, sendConversationMessage, setInput]);
 
   const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (promptMenuOpen) {
@@ -199,36 +177,19 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
   // Handle launch request
   useEffect(() => {
-    if (!launchRequest || agents.length === 0 || isLoading) return;
-
-    const agent = agents.find(a => a.name === launchRequest.agentName);
-    if (!agent) {
-      console.error(`Agent not found for launch request: ${launchRequest.agentName}`);
-      onLaunchHandled?.();
-      return;
-    }
-
+    if (!launchRequest || isLoading) return;
     onLaunchHandled?.();
+
     if (launchRequest.autoSend === false) {
-      setInput(launchRequest.message);
-      if (launchRequest.model) {
-        setSelectedModel(launchRequest.model);
-      }
-      setSelectedAgentId(agent.id);
+      setInput(launchRequest.message || '');
       return;
     }
 
     void sendConversationMessage({
-      agentId: agent.id,
       message: launchRequest.message,
       model: launchRequest.model,
-      resetMessages: launchRequest.newConversation === true,
-      forceNewConversation: launchRequest.newConversation,
-      reuseAgentConversation: launchRequest.reuseAgentConversation ?? agent.name === DAILY_REPORT_AGENT_NAME,
     });
-  }, [agents, isLoading, launchRequest, onLaunchHandled]);
-
-  const selectedAgent = agents.find(a => a.id === selectedAgentId);
+  }, [isLoading, launchRequest, onLaunchHandled]);
 
   // Resize handle logic
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -283,13 +244,13 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
       {/* Chat main panel */}
       <div className="flex-1 h-full flex flex-col min-w-0">
-        <ChatHeader selectedAgent={selectedAgent} />
+        <ChatHeader />
 
         <ChatMessages
           messages={messages}
           isLoading={isLoading}
           executionState={executionState}
-          selectedAgent={selectedAgent}
+          selectedAgent={undefined}
           onToggleExecution={toggleCollapsed}
           onSuggestionClick={(text) => setInput(text)}
         />
@@ -300,27 +261,25 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
           onAbort={handleAbortChat}
         />
 
-        {selectedAgentId && (
-          <ChatInput
-            input={input}
-            setInput={setInput}
-            inputRef={inputRef}
-            isLoading={isLoading}
-            selectedAgent={selectedAgent}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            agents={agents}
-            setSelectedAgentId={setSelectedAgentId}
-            providers={providers}
-            promptMenuOpen={promptMenuOpen}
-            promptSuggestions={promptSuggestions}
-            selectedPromptIndex={selectedPromptIndex}
-            onSend={handleSendMessage}
-            onAbort={handleAbortChat}
-            onKeyDown={handleInputKeyDown}
-            onApplyPromptSuggestion={applyPromptSuggestion}
-          />
-        )}
+        <ChatInput
+          input={input}
+          setInput={setInput}
+          inputRef={inputRef}
+          isLoading={isLoading}
+          selectedAgent={undefined}
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
+          agents={[]}
+          setSelectedAgentId={() => {}}
+          providers={providers}
+          promptMenuOpen={promptMenuOpen}
+          promptSuggestions={promptSuggestions}
+          selectedPromptIndex={selectedPromptIndex}
+          onSend={handleSendMessage}
+          onAbort={handleAbortChat}
+          onKeyDown={handleInputKeyDown}
+          onApplyPromptSuggestion={applyPromptSuggestion}
+        />
       </div>
     </div>
   );

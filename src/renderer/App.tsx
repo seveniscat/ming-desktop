@@ -4,7 +4,6 @@ import Titlebar from './components/Titlebar';
 import Welcome from './components/Welcome';
 import Dashboard from './components/Dashboard';
 import AgentChat from './components/AgentChat';
-import AgentManager from './components/AgentManager';
 import SkillManager from './components/SkillManager';
 import PromptManager from './components/PromptManager';
 import Settings from './components/Settings';
@@ -111,7 +110,6 @@ function App() {
                   onLaunchHandled={() => setChatLaunchRequest(null)}
                 />
               )}
-              {activeTab === 'agents' && <AgentManager />}
               {activeTab === 'skills' && <SkillManager />}
               {activeTab === 'tools' && <ToolsPage />}
               {activeTab === 'prompts' && <PromptManager />}

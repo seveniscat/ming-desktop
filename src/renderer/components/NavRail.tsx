@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Home, LayoutDashboard, MessageSquare, Bot, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug } from 'lucide-react';
+import { Home, LayoutDashboard, MessageSquare, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeProvider';
 import { Button } from './ui/button';
@@ -15,7 +15,6 @@ const navItems = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'WorkGround' },
   { id: 'techstack', icon: Search, label: 'TechStack' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
-  { id: 'agents', icon: Bot, label: 'Agents' },
   { id: 'skills', icon: Zap, label: 'Skills' },
   { id: 'tools', icon: Wrench, label: 'Tools' },
   { id: 'prompts', icon: FileText, label: 'Prompts' },

@@ -36,7 +36,7 @@ export interface PromptSuggestion {
   trigger: string;
   description: string;
   content: string;
-  type: 'builtin' | 'prompt';
+  type: 'builtin' | 'prompt' | 'tool' | 'skill';
 }
 
 export interface ExecutionStep {

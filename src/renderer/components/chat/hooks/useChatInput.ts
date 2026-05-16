@@ -10,34 +10,64 @@ export function useChatInput({
 }) {
   const [input, setInput] = useState('');
   const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
+  const [tools, setTools] = useState<any[]>([]);
+  const [skills, setSkills] = useState<any[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load tools and skills once
+  useEffect(() => {
+    window.electronAPI.tools.list().then((list: any[]) => {
+      setTools(list.filter(t => t.is_enabled));
+    }).catch(() => {});
+    window.electronAPI.skills.list().then((list: any[]) => {
+      setSkills(list.filter((s: any) => s.enabled));
+    }).catch(() => {});
+  }, []);
 
   const slashQuery = input.startsWith('/') ? input.slice(1).trim().toLowerCase() : null;
 
   const promptSuggestions = useMemo<PromptSuggestion[]>(() => {
     if (slashQuery === null) return [];
 
-    const userPrompts = promptTemplates
+    const toolItems: PromptSuggestion[] = tools.map((tool) => ({
+      id: `tool-${tool.name}`,
+      name: tool.display_name || tool.name,
+      trigger: tool.name,
+      description: tool.description || '',
+      content: `/${tool.name} `,
+      type: 'tool' as const,
+    }));
+
+    const skillItems: PromptSuggestion[] = skills.map((skill) => ({
+      id: `skill-${skill.id}`,
+      name: skill.name,
+      trigger: skill.name.toLowerCase(),
+      description: skill.description || '',
+      content: skill.prompt,
+      type: 'skill' as const,
+    }));
+
+    const promptItems: PromptSuggestion[] = promptTemplates
       .filter((prompt) => prompt.enabled)
       .map<PromptSuggestion>((prompt) => ({
         id: prompt.id,
         name: prompt.name,
-        trigger: prompt.trigger,
+        trigger: prompt.trigger || prompt.name.toLowerCase(),
         description: prompt.description,
         content: prompt.content,
-        type: 'prompt',
+        type: 'prompt' as const,
       }));
 
-    const all = [...userPrompts];
-    if (!slashQuery) return all.slice(0, 8);
+    const all = [...toolItems, ...skillItems, ...promptItems];
+    if (!slashQuery) return all.slice(0, 10);
 
     return all
       .filter((item) => {
         const haystack = `${item.name} ${item.trigger} ${item.description}`.toLowerCase();
         return haystack.includes(slashQuery);
       })
-      .slice(0, 8);
-  }, [promptTemplates, slashQuery]);
+      .slice(0, 10);
+  }, [tools, skills, promptTemplates, slashQuery]);
 
   const promptMenuOpen = slashQuery !== null && promptSuggestions.length > 0 && !isLoading;
 
@@ -46,14 +76,7 @@ export function useChatInput({
   }, [slashQuery]);
 
   const applyPromptSuggestion = useCallback((suggestion: PromptSuggestion) => {
-    // 如果内容是完整的命令（如 /日报），直接发送而不是留在输入框
-    // 否则只填入内容部分（去掉 /）
-    if (suggestion.content.startsWith('/')) {
-      // 保留内容在输入框，但让菜单消失：添加一个空格
-      setInput(suggestion.content + ' ');
-    } else {
-      setInput(suggestion.content);
-    }
+    setInput(suggestion.content);
     setSelectedPromptIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);

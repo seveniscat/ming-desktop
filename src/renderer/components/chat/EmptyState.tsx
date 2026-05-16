@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import { fadeInUp, smoothTransition } from '@/lib/motion';
 
 interface EmptyStateProps {
-  agentName?: string;
   onSuggestionClick?: (text: string) => void;
 }
 
@@ -13,7 +12,7 @@ const suggestions = [
   { icon: Lightbulb, title: 'Debug', text: 'Help me fix this error', description: 'Troubleshoot issues' },
 ];
 
-export default function EmptyState({ agentName, onSuggestionClick }: EmptyStateProps) {
+export default function EmptyState({ onSuggestionClick }: EmptyStateProps) {
   return (
     <motion.div
       variants={fadeInUp}
@@ -32,7 +31,7 @@ export default function EmptyState({ agentName, onSuggestionClick }: EmptyStateP
         How can I help?
       </h2>
       <p className="text-sm text-muted-foreground mb-8">
-        Start a conversation with {agentName || 'an agent'}
+        Start a conversation
       </p>
 
       {/* Suggestion grid */}

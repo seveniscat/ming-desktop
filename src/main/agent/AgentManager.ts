@@ -405,11 +405,8 @@ export class AgentManager extends EventEmitter {
     return false;
   }
 
-  private buildConversationContext(conversationId: string, agentId: string, userMessage: string): ChatMessage[] {
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
+  private buildConversationContext(conversationId: string, agentId: string | null, userMessage: string): ChatMessage[] {
+    const agent = agentId ? this.agents.get(agentId) : undefined;
 
     const db = getDatabase();
 
@@ -420,13 +417,13 @@ export class AgentManager extends EventEmitter {
     if (existingMessages.count === 0) {
       const title = userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : '');
       db.prepare("UPDATE conversations SET title = ?, agent_id = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(title, agentId, conversationId);
+        .run(title, agentId || null, conversationId);
     }
 
     // Save user message
     db.prepare(`
       INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'user', ?, ?)
-    `).run(agentId, userMessage, conversationId);
+    `).run(agentId || null, userMessage, conversationId);
 
     // Load recent history from DB (last 10 messages in this conversation)
     const rows = db.prepare(`
@@ -439,7 +436,9 @@ export class AgentManager extends EventEmitter {
       timestamp: r.timestamp
     }));
 
-    const systemContent = this.buildSystemContent(agent);
+    const systemContent = agent
+      ? this.buildSystemContent(agent)
+      : 'You are a helpful assistant.';
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
@@ -531,7 +530,7 @@ export class AgentManager extends EventEmitter {
 
   async chatInConversationStream(
     conversationId: string,
-    agentId: string,
+    agentId: string | null,
     userMessage: string,
     model: string | undefined,
     webContents: Electron.WebContents
@@ -549,8 +548,10 @@ export class AgentManager extends EventEmitter {
       return;
     }
 
-    const agent = this.agents.get(agentId);
-    const toolDefs = agent ? this.toolExecutor.getToolsForAgent(agent.tools) : [];
+    const agent = agentId ? this.agents.get(agentId) : undefined;
+    const toolDefs = agent
+      ? this.toolExecutor.getToolsForAgent(agent.tools)
+      : this.toolExecutor.getDefinitions();
     const db = getDatabase();
 
     const abortController = new AbortController();

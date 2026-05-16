@@ -4,13 +4,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import MessageBubble from './MessageBubble';
 import ExecutionDetails from './ExecutionDetails';
 import EmptyState from './EmptyState';
-import type { Message, ExecutionState, Agent } from './types';
+import type { Message, ExecutionState } from './types';
 
 interface ChatMessagesProps {
   messages: Message[];
   isLoading: boolean;
   executionState: ExecutionState;
-  selectedAgent: Agent | undefined;
+  selectedAgent?: any;
   onToggleExecution: () => void;
   onSuggestionClick?: (text: string) => void;
 }
@@ -19,7 +19,6 @@ export default function ChatMessages({
   messages,
   isLoading,
   executionState,
-  selectedAgent,
   onToggleExecution,
   onSuggestionClick,
 }: ChatMessagesProps) {
@@ -34,7 +33,6 @@ export default function ChatMessages({
       <div className="p-6 space-y-6">
         {messages.length === 0 ? (
           <EmptyState
-            agentName={selectedAgent?.name}
             onSuggestionClick={onSuggestionClick}
           />
         ) : (
