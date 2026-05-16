@@ -117,6 +117,7 @@ export function useChatMessages({
       removeChunk();
       removeEnd();
       removeError();
+      removeToolEvent();
       if (data.conversationId !== convId) return;
       setIsLoading(false);
       setExecutionState(prev => ({
@@ -142,6 +143,7 @@ export function useChatMessages({
       removeChunk();
       removeEnd();
       removeError();
+      removeToolEvent();
       if (data.conversationId !== convId) return;
       setMessages(prev => {
         const updated = [...prev];
@@ -172,6 +174,58 @@ export function useChatMessages({
         ],
       }));
       activeConversationRef.current = null;
+    });
+
+    const removeToolEvent = window.electronAPI.conversations.onStreamToolEvent((data) => {
+      if (data.conversationId !== convId) return;
+
+      if (data.event === 'tool_start') {
+        setExecutionState(prev => ({
+          ...prev,
+          steps: [
+            ...prev.steps,
+            {
+              id: `tool-start-${data.timestamp}`,
+              type: 'tool',
+              timestamp: data.timestamp,
+              title: `调用工具：${data.toolName}`,
+              detail: `参数：${compactDetail(data.args)}`,
+              status: 'active',
+            },
+          ],
+        }));
+      } else if (data.event === 'tool_result') {
+        setExecutionState(prev => {
+          // Update the matching tool_start step to done
+          const steps = [...prev.steps];
+          const startStep = steps.findIndex(
+            s => s.type === 'tool' && s.status === 'active' && s.title === `调用工具：${data.toolName}`
+          );
+          if (startStep >= 0) {
+            steps[startStep] = {
+              ...steps[startStep],
+              status: 'done',
+              detail: `${steps[startStep].detail}\n耗时：${data.duration}ms\n结果：${compactDetail(data.result, 300)}`,
+            };
+          }
+          return { ...prev, steps };
+        });
+      } else if (data.event === 'tool_error') {
+        setExecutionState(prev => {
+          const steps = [...prev.steps];
+          const startStep = steps.findIndex(
+            s => s.type === 'tool' && s.status === 'active' && s.title === `调用工具：${data.toolName}`
+          );
+          if (startStep >= 0) {
+            steps[startStep] = {
+              ...steps[startStep],
+              status: 'error',
+              detail: `错误：${data.error}`,
+            };
+          }
+          return { ...prev, steps };
+        });
+      }
     });
 
     if (!convId) return;

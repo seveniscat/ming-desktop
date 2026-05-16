@@ -635,6 +635,20 @@ export class AgentManager extends EventEmitter {
           for (const toolCall of toolCalls) {
             try {
               const toolStart = Date.now();
+              let parsedArgs: any;
+              try { parsedArgs = JSON.parse(toolCall.function.arguments); } catch { parsedArgs = toolCall.function.arguments; }
+
+              // Send tool-start event to chat renderer
+              if (!webContents.isDestroyed()) {
+                webContents.send(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, {
+                  conversationId,
+                  event: 'tool_start',
+                  toolName: toolCall.function.name,
+                  args: parsedArgs,
+                  timestamp: toolStart,
+                });
+              }
+
               sendDebug({
                 type: 'tool',
                 timestamp: toolStart,
@@ -646,6 +660,21 @@ export class AgentManager extends EventEmitter {
               });
 
               const toolResult = await this.toolExecutor.execute(toolCall);
+              const toolDuration = Date.now() - toolStart;
+
+              // Send tool-result event to chat renderer
+              if (!webContents.isDestroyed()) {
+                webContents.send(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, {
+                  conversationId,
+                  event: 'tool_result',
+                  toolName: toolCall.function.name,
+                  args: parsedArgs,
+                  result: toolResult.slice(0, 2000),
+                  duration: toolDuration,
+                  timestamp: Date.now(),
+                });
+              }
+
               sendDebug({
                 type: 'tool',
                 timestamp: Date.now(),
@@ -654,7 +683,7 @@ export class AgentManager extends EventEmitter {
                   toolArgs: toolCall.function.arguments,
                   toolResult: toolResult.slice(0, 2000),
                   content: `${toolCall.function.name} completed`,
-                  duration: Date.now() - toolStart,
+                  duration: toolDuration,
                 },
               });
               messages.push({
@@ -663,6 +692,18 @@ export class AgentManager extends EventEmitter {
               });
             } catch (error) {
               const errMsg = error instanceof Error ? error.message : 'Tool execution failed';
+
+              // Send tool-error event to chat renderer
+              if (!webContents.isDestroyed()) {
+                webContents.send(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, {
+                  conversationId,
+                  event: 'tool_error',
+                  toolName: toolCall.function.name,
+                  error: errMsg,
+                  timestamp: Date.now(),
+                });
+              }
+
               sendDebug({
                 type: 'error',
                 timestamp: Date.now(),

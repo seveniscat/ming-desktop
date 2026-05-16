@@ -77,6 +77,7 @@ export enum IPCChannels {
   CONVERSATION_STREAM_CHUNK = 'conversation:stream-chunk',
   CONVERSATION_STREAM_END = 'conversation:stream-end',
   CONVERSATION_STREAM_ERROR = 'conversation:stream-error',
+  CONVERSATION_STREAM_TOOL_EVENT = 'conversation:stream-tool-event',
 
   // Debug 相关
   DEBUG_MODEL_CALL = 'debug:model-call',

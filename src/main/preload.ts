@@ -69,6 +69,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_ERROR, listener);
       return () => ipcRenderer.removeListener(IPCChannels.CONVERSATION_STREAM_ERROR, listener);
     },
+    onStreamToolEvent: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, listener);
+    },
   },
 
   // Debug API
@@ -200,6 +205,7 @@ export interface ElectronAPI {
     onStreamChunk: (callback: (data: any) => void) => () => void;
     onStreamEnd: (callback: (data: any) => void) => () => void;
     onStreamError: (callback: (data: any) => void) => () => void;
+    onStreamToolEvent: (callback: (data: any) => void) => () => void;
   };
   llm: {
     listProviders: () => Promise<any[]>;

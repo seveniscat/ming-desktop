@@ -33,6 +33,7 @@ interface Window {
       onStreamChunk: (callback: (data: any) => void) => () => void;
       onStreamEnd: (callback: (data: any) => void) => () => void;
       onStreamError: (callback: (data: any) => void) => () => void;
+      onStreamToolEvent: (callback: (data: any) => void) => () => void;
     };
     debug: {
       openPanel: () => Promise<any>;
