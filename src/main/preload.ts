@@ -136,7 +136,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scanRepos: () => ipcRenderer.invoke(IPCChannels.GIT_SCAN_REPOS),
     getUser: () => ipcRenderer.invoke(IPCChannels.GIT_GET_USER),
     getAllAuthors: () => ipcRenderer.invoke(IPCChannels.GIT_GET_ALL_AUTHORS),
-    heatmap: (author?: string) => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP, author),
+    heatmap: (authors?: string[]) => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP, authors),
     clearCache: () => ipcRenderer.invoke(IPCChannels.GIT_CLEAR_CACHE),
     getMyIdentities: () => ipcRenderer.invoke(IPCChannels.GIT_GET_MY_IDENTITIES),
     setMyIdentities: (identities: { name: string; email: string }[]) =>
@@ -244,7 +244,7 @@ export interface ElectronAPI {
   git: {
     scanRepos: () => Promise<{ name: string; path: string }[]>;
     getUser: () => Promise<{ name: string; email: string }>;
-    heatmap: () => Promise<{
+    heatmap: (authors?: string[]) => Promise<{
       data: Record<string, number>;
       stats: {
         totalCommits: number;

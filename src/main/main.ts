@@ -534,9 +534,9 @@ function setupIPCHandlers(): void {
   });
 
   // Git commit heatmap data
-  ipcMain.handle(IPCChannels.GIT_HEATMAP, async (_event, author?: string) => {
-    // Try to load from persistent cache first (only if no specific author)
-    if (!author) {
+  ipcMain.handle(IPCChannels.GIT_HEATMAP, async (_event, authors?: string[]) => {
+    // Try to load from persistent cache first (only if no specific author filter)
+    if (!authors || authors.length === 0) {
       const cachedHeatmap = GitCacheManager.loadHeatmapCache();
       if (cachedHeatmap) {
         return {
@@ -578,22 +578,26 @@ function setupIPCHandlers(): void {
     }
 
     const data: Record<string, number> = {};
-    // Use provided author, or fall back to git config user.name
-    let gitUser = author;
-    if (!gitUser) {
+    // Build author flags for git log (multiple --author flags = OR logic)
+    let authorFlags = '';
+    if (authors && authors.length > 0) {
+      authorFlags = authors.map(a => `--author="${a}"`).join(' ');
+    } else {
+      // Fallback: try git config user.name
       try {
         const name = await execAsync('git config user.name');
-        gitUser = name.trim();
-      } catch {
-        gitUser = '';
-      }
+        const trimmed = name.trim();
+        if (trimmed) {
+          authorFlags = `--author="${trimmed}"`;
+        }
+      } catch { /* no git user configured */ }
     }
 
     // Process repos sequentially with small delays to avoid blocking UI
     for (const repo of repos) {
       try {
-        const cmd = gitUser
-          ? `git -C "${repo.path}" log --all --author="${gitUser}" --since="1 year ago" --format=%ad --date=short`
+        const cmd = authorFlags
+          ? `git -C "${repo.path}" log --all ${authorFlags} --since="1 year ago" --format=%ad --date=short`
           : `git -C "${repo.path}" log --all --since="1 year ago" --format=%ad --date=short`;
         const output = await execAsync(cmd);
         for (const line of output.trim().split('\n')) {
@@ -665,7 +669,7 @@ function setupIPCHandlers(): void {
     };
 
     // Save to persistent cache (only if no specific author filter)
-    if (!author) {
+    if (!authors || authors.length === 0) {
       GitCacheManager.saveHeatmapCache(heatmapData);
     }
 
