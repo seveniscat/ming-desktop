@@ -68,8 +68,10 @@ interface Window {
       scanRepos: () => Promise<{ name: string; path: string }[]>;
       getUser: () => Promise<{ name: string; email: string }>;
       getAllAuthors: () => Promise<{ name: string; email: string }[]>;
-      heatmap: (author?: string) => Promise<{ data: Record<string, number>; stats: { totalCommits: number; longestStreak: number; currentStreak: number; mostActiveMonth: string; mostActiveDay: string } }>;
+      heatmap: (authors?: string[]) => Promise<{ data: Record<string, number>; stats: { totalCommits: number; longestStreak: number; currentStreak: number; mostActiveMonth: string; mostActiveDay: string } }>;
       clearCache: () => Promise<{ success: boolean }>;
+      getMyIdentities: () => Promise<{ name: string; email: string }[]>;
+      setMyIdentities: (identities: { name: string; email: string }[]) => Promise<void>;
     };
     dailyReport: {
       fetch: (params: any) => Promise<any>;

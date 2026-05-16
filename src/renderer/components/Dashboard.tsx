@@ -80,7 +80,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
   const [gitUser, setGitUser] = useState({ name: '', email: '' });
   const [gitAuthors, setGitAuthors] = useState<{ name: string; email: string }[]>([]);
-  const [selectedAuthor, setSelectedAuthor] = useState<string>('__all__'); // '__all__' = all users
   const [heatmapData, setHeatmapData] = useState<{
     data: Record<string, number>;
     stats: {
@@ -92,27 +91,28 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     };
   } | null>(null);
   const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
+  const [myIdentities, setMyIdentities] = useState<{ name: string; email: string }[]>([]);
+  const [identitySheetOpen, setIdentitySheetOpen] = useState(false);
+  const [selectedIdentities, setSelectedIdentities] = useState<Set<string>>(new Set());
 
   const fetchHeatmap = useCallback(async (forceRefresh = false) => {
     // Clear memory cache if forcing refresh
     if (forceRefresh) {
       cachedHeatmapData = null;
     }
-    
-    // Return cached data immediately if available (only when no specific author)
-    if (cachedHeatmapData && (!selectedAuthor || selectedAuthor === '__all__')) {
+
+    // Return cached data immediately if available
+    if (cachedHeatmapData) {
       setHeatmapData(cachedHeatmapData);
       return;
     }
-    
+
     // Deduplicate: reuse in-flight request
     if (!heatmapFetchPromise) {
-      const authorParam = (selectedAuthor && selectedAuthor !== '__all__') ? selectedAuthor : undefined;
-      heatmapFetchPromise = window.electronAPI.git.heatmap(authorParam)
+      const authorNames = myIdentities.length > 0 ? myIdentities.map(i => i.name) : undefined;
+      heatmapFetchPromise = window.electronAPI.git.heatmap(authorNames)
         .then(result => {
-          if (!selectedAuthor || selectedAuthor === '__all__') {
-            cachedHeatmapData = result;
-          }
+          cachedHeatmapData = result;
           return result;
         })
         .catch(error => {
@@ -127,7 +127,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     const result = await heatmapFetchPromise;
     if (result) setHeatmapData(result);
     setIsHeatmapLoading(false);
-  }, [selectedAuthor]);
+  }, [myIdentities]);
 
   // Sort repos by activity: repos with commits first (sorted by date desc), then repos without commits
   const sortedGitRepos = useMemo(() => {
@@ -172,6 +172,16 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     }
   }, []);
 
+  const loadMyIdentities = useCallback(async () => {
+    try {
+      const identities = await window.electronAPI.git.getMyIdentities();
+      setMyIdentities(identities);
+      setSelectedIdentities(new Set(identities.map(i => `${i.name}|${i.email}`)));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const handleAddPath = async () => {
     try {
       const result = await window.electronAPI.dialog.showOpenDialog({
@@ -202,40 +212,40 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   useEffect(() => {
     loadWorkPaths();
     window.electronAPI.git.getUser().then(setGitUser).catch(() => {});
-  }, [loadWorkPaths]);
+    loadMyIdentities();
+  }, [loadWorkPaths, loadMyIdentities]);
 
   useEffect(() => {
     if (workPaths.length > 0) {
       loadGitRepos();
       // Load all git authors when work paths are available
-      window.electronAPI.git.getAllAuthors().then(authors => {
+      window.electronAPI.git.getAllAuthors().then(async authors => {
         setGitAuthors(authors || []);
-        // Default to current git user if available
-        if (gitUser.name && authors.some(a => a.name === gitUser.name)) {
-          setSelectedAuthor(gitUser.name);
+        // Auto-open identity selector if no identities saved and multiple authors exist
+        if (myIdentities.length === 0 && authors.length > 1) {
+          setIdentitySheetOpen(true);
         }
       }).catch(() => {});
     } else {
       setGitRepos([]);
       setGitAuthors([]);
     }
-  }, [workPaths, loadGitRepos, gitUser.name]);
+  }, [workPaths, loadGitRepos, myIdentities.length]);
 
   const buildReportParams = useCallback(() => {
     const params: any = {
       timeRange: timeRange === 'custom' ? 'today' : timeRange,
       includeAllBranches: true,
     };
-    // Only add author filter if a specific user is selected (not "__all__")
-    if (selectedAuthor && selectedAuthor !== '__all__') {
-      params.author = selectedAuthor;
+    if (myIdentities.length > 0) {
+      params.authors = myIdentities.map(i => i.name);
     }
     if (timeRange === 'custom') {
       if (customSince) params.sinceDate = format(customSince, 'yyyy-MM-dd');
       if (customUntil) params.untilDate = format(customUntil, 'yyyy-MM-dd');
     }
     return params;
-  }, [timeRange, customSince, customUntil, selectedAuthor]);
+  }, [timeRange, customSince, customUntil, myIdentities]);
 
   const fetchStats = useCallback(async (forceRefresh = false) => {
     const params = buildReportParams();
@@ -303,16 +313,16 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     }
   }, [workPaths, fetchStats]);
 
-  // Refetch stats and heatmap when selected author changes
+  // Refetch stats and heatmap when identities change
   useEffect(() => {
     if (workPaths.length > 0) {
-      // Clear memory caches when author changes (persistent cache in backend will be used)
+      // Clear memory caches when identities change (persistent cache in backend will be used)
       cachedStatsData = null;
       cachedHeatmapData = null;
-      fetchStats();
-      fetchHeatmap();
+      fetchStats(true);
+      fetchHeatmap(true);
     }
-  }, [selectedAuthor, workPaths.length, fetchStats, fetchHeatmap]);
+  }, [myIdentities, workPaths.length, fetchStats, fetchHeatmap]);
 
   // Load heatmap on initial mount
   useEffect(() => {
@@ -401,7 +411,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
         </div>
 
         {/* User Info Card - First */}
-        {gitUser.name && (
+        {(myIdentities.length > 0 || gitUser.name) && (
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -409,8 +419,21 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                   <User size={28} className="text-violet-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xl font-bold text-foreground truncate">{gitUser.name}</div>
-                  <div className="text-sm text-muted-foreground truncate">{gitUser.email}</div>
+                  {myIdentities.length > 0 ? (
+                    <>
+                      <div className="text-xl font-bold text-foreground truncate">
+                        {myIdentities.map(i => i.name).join(', ')}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {myIdentities.length} identit{myIdentities.length === 1 ? 'y' : 'ies'} selected
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-xl font-bold text-foreground truncate">{gitUser.name}</div>
+                      <div className="text-sm text-muted-foreground truncate">{gitUser.email}</div>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="text-center">
@@ -508,28 +531,39 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                     ))}
                   </div>
 
-                  {/* Git Author Switcher */}
+                  {/* My Identities */}
                   {gitAuthors.length > 0 && (
                     <div className="pt-3 border-t border-[hsl(var(--border))]">
                       <div className="flex items-center gap-2 mb-2">
                         <User size={14} className="text-muted-foreground" />
                         <span className="text-sm font-medium text-secondary-foreground">
-                          Git User
+                          My Identities
                         </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto h-6 text-xs"
+                          onClick={() => {
+                            setSelectedIdentities(new Set(myIdentities.map(i => `${i.name}|${i.email}`)));
+                            setIdentitySheetOpen(true);
+                          }}
+                        >
+                          Manage
+                        </Button>
                       </div>
-                      <Select value={selectedAuthor} onValueChange={setSelectedAuthor}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select a user" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__all__">All Users</SelectItem>
-                          {gitAuthors.map((author, i) => (
-                            <SelectItem key={i} value={author.name}>
-                              {author.name} {author.email ? `(${author.email})` : ''}
-                            </SelectItem>
+                      {myIdentities.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {myIdentities.map((id, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">
+                              {id.name}
+                            </Badge>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          Click "Manage" to select your identities
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -806,6 +840,69 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                   ))}
                 </div>
               )}
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Identity Selector Sheet */}
+        <Sheet open={identitySheetOpen} onOpenChange={setIdentitySheetOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <User size={18} />
+                Select Your Identities
+              </SheetTitle>
+              <SheetDescription>
+                Choose which git identities belong to you. This affects heatmap, commits, and reports.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6">
+              <div className="flex flex-wrap gap-2">
+                {gitAuthors.map((author, i) => {
+                  const key = `${author.name}|${author.email}`;
+                  const isSelected = selectedIdentities.has(key);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setSelectedIdentities(prev => {
+                          const next = new Set(prev);
+                          if (next.has(key)) next.delete(key);
+                          else next.add(key);
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors border',
+                        isSelected
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-card text-muted-foreground border-[hsl(var(--border))] hover:border-primary/50'
+                      )}
+                    >
+                      <span className="font-medium">{author.name}</span>
+                      {author.email && <span className="text-xs opacity-70">({author.email})</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <Button
+                onClick={async () => {
+                  const identities = gitAuthors.filter(a => selectedIdentities.has(`${a.name}|${a.email}`));
+                  await window.electronAPI.git.setMyIdentities(identities);
+                  setMyIdentities(identities);
+                  setIdentitySheetOpen(false);
+                  // Clear caches and refresh data
+                  cachedStatsData = null;
+                  cachedHeatmapData = null;
+                  fetchStats(true);
+                  fetchHeatmap(true);
+                }}
+                disabled={selectedIdentities.size === 0}
+              >
+                Confirm ({selectedIdentities.size} selected)
+              </Button>
             </div>
           </SheetContent>
         </Sheet>
