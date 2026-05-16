@@ -297,4 +297,26 @@ export function runMigrations(): void {
       insertSeed.run('prompt-assistant', 'Helpful Assistant', 'system', 'assistant', 'A friendly, helpful AI assistant', 'You are a helpful, friendly AI assistant. Be concise but thorough. Use examples when helpful. If you are unsure about something, say so.', '[]', 'general', JSON.stringify(['general', 'assistant']));
     }
   }
+
+  // Migration: seed built-in tools
+  const migration10Name = 'seed-builtin-tools';
+  const applied10 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration10Name);
+  if (!applied10) {
+    const insertTool = db.prepare(`
+      INSERT OR IGNORE INTO tools (id, name, display_name, description, category, parameters_schema, implementation_type, is_enabled)
+      VALUES (?, ?, ?, ?, ?, ?, 'builtin', 1)
+    `);
+    const builtinTools = [
+      { id: 'tool-read-file', name: 'read_file', display_name: 'Read File', description: 'Read the contents of a file. Supports reading specific line ranges.', category: 'file', schema: '{"type":"object","properties":{"path":{"type":"string","description":"File path"},"offset":{"type":"number","description":"Start line"},"limit":{"type":"number","description":"Max lines"}},"required":["path"]}' },
+      { id: 'tool-write-file', name: 'write_file', display_name: 'Write File', description: 'Write content to a file. Creates parent directories if needed.', category: 'file', schema: '{"type":"object","properties":{"path":{"type":"string","description":"File path"},"content":{"type":"string","description":"Content to write"},"append":{"type":"boolean","description":"Append mode"}},"required":["path","content"]}' },
+      { id: 'tool-list-directory', name: 'list_directory', display_name: 'List Directory', description: 'List files and directories. Supports recursive listing and glob filtering.', category: 'file', schema: '{"type":"object","properties":{"path":{"type":"string","description":"Directory path"},"recursive":{"type":"boolean","description":"List recursively"},"pattern":{"type":"string","description":"Glob filter pattern"}},"required":["path"]}' },
+      { id: 'tool-search-files', name: 'search_files', display_name: 'Search Files', description: 'Search for a regex pattern in files within a directory.', category: 'file', schema: '{"type":"object","properties":{"pattern":{"type":"string","description":"Regex pattern"},"path":{"type":"string","description":"Directory to search"},"glob":{"type":"string","description":"File filter"},"caseInsensitive":{"type":"boolean"},"maxResults":{"type":"number"}},"required":["pattern"]}' },
+      { id: 'tool-execute-command', name: 'execute_command', display_name: 'Execute Command', description: 'Execute a shell command and return its output.', category: 'system', schema: '{"type":"object","properties":{"command":{"type":"string","description":"Shell command"},"cwd":{"type":"string","description":"Working directory"},"timeout":{"type":"number","description":"Timeout in ms"}},"required":["command"]}' },
+      { id: 'tool-daily-report', name: 'daily-report', display_name: 'Daily Report', description: 'Collect Git commit records for generating daily work reports.', category: 'system', schema: '{"type":"object","properties":{"timeRange":{"type":"string","enum":["today","yesterday","week"]},"repoPaths":{"type":"array","items":{"type":"string"}},"author":{"type":"string"}}}' },
+    ];
+    for (const tool of builtinTools) {
+      insertTool.run(tool.id, tool.name, tool.display_name, tool.description, tool.category, tool.schema);
+    }
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration10Name);
+  }
 }

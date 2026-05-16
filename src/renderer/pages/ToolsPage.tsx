@@ -154,7 +154,7 @@ export default function ToolsPage() {
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="p-3 space-y-2">
+            <div className="px-2 pb-2 space-y-0.5">
               {loading ? (
                 <div className="text-center text-sm text-muted-foreground py-8">Loading...</div>
               ) : filtered.length === 0 ? (
@@ -166,33 +166,27 @@ export default function ToolsPage() {
                   <button
                     key={tool.id}
                     onClick={() => setSelectedId(tool.id)}
-                    className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
                       selectedId === tool.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-[hsl(var(--border))] hover:border-primary/40 hover:bg-[var(--surface-hover)]'
+                        ? 'bg-primary/5 border-l-2 border-primary'
+                        : 'border-l-2 border-transparent hover:bg-[var(--surface-hover)]'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">{tool.display_name}</span>
-                          {!tool.is_enabled && (
-                            <Badge variant="outline" className="text-[10px] shrink-0">
-                              Disabled
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                          {tool.description || tool.name}
-                        </p>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">{tool.display_name}</span>
+                      {!tool.is_enabled && (
+                        <Badge variant="outline" className="text-[10px] shrink-0">Disabled</Badge>
+                      )}
                       {tool.category && (
-                        <Badge variant="secondary" className="text-[10px] shrink-0">
-                          {tool.category}
-                        </Badge>
+                        <Badge variant="secondary" className="text-[10px] shrink-0">{tool.category}</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
+                    {(tool.description || tool.name) && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 text-left">
+                        {tool.description || tool.name}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
                       <span>{tool.usage_count} uses</span>
                       <span>{tool.implementation_type}</span>
                     </div>
