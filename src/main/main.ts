@@ -15,6 +15,12 @@ import { DebugLogService } from './services/DebugLogService';
 import { ToolExecutor } from './tools/ToolExecutor';
 import { ToolPersistenceManager } from './tools/ToolPersistenceManager';
 import { createDailyReportTool } from './tools/dailyReportTool';
+import { createReadFileTool } from './tools/readFileTool';
+import { createListDirectoryTool } from './tools/listDirectoryTool';
+import { createWriteFileTool } from './tools/writeFileTool';
+import { createExecuteCommandTool } from './tools/executeCommandTool';
+import { createSearchFilesTool } from './tools/searchFilesTool';
+import { ToolApprovalManager } from './tools/toolApproval';
 import { Logger } from './utils/Logger';
 import { initializeDatabase, closeDatabase, getDatabase } from './database/connection';
 import { runMigrations } from './database/schema';
@@ -63,6 +69,10 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  if (toolExecutor) {
+    toolExecutor.setMainWindow(mainWindow);
+  }
 }
 
 function loadRendererWindow(window: BrowserWindow, view?: string): void {
@@ -144,6 +154,14 @@ async function initializeServices(): Promise<void> {
   // 初始化 Tool Executor
   toolExecutor = new ToolExecutor();
   toolExecutor.register(createDailyReportTool(configManager, executorService));
+  toolExecutor.register(createReadFileTool());
+  toolExecutor.register(createListDirectoryTool());
+  toolExecutor.register(createWriteFileTool());
+  toolExecutor.register(createExecuteCommandTool(executorService));
+  toolExecutor.register(createSearchFilesTool());
+
+  const toolApprovalManager = new ToolApprovalManager();
+  toolExecutor.setApprovalManager(toolApprovalManager);
 
   toolPersistenceManager = new ToolPersistenceManager(toolExecutor);
 
