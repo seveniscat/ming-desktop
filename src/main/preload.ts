@@ -138,6 +138,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAllAuthors: () => ipcRenderer.invoke(IPCChannels.GIT_GET_ALL_AUTHORS),
     heatmap: (author?: string) => ipcRenderer.invoke(IPCChannels.GIT_HEATMAP, author),
     clearCache: () => ipcRenderer.invoke(IPCChannels.GIT_CLEAR_CACHE),
+    getMyIdentities: () => ipcRenderer.invoke(IPCChannels.GIT_GET_MY_IDENTITIES),
+    setMyIdentities: (identities: { name: string; email: string }[]) =>
+      ipcRenderer.invoke(IPCChannels.GIT_SET_MY_IDENTITIES, identities),
   },
 
   // Daily Report API
@@ -251,6 +254,8 @@ export interface ElectronAPI {
         mostActiveDay: string;
       };
     }>;
+    getMyIdentities: () => Promise<{ name: string; email: string }[]>;
+    setMyIdentities: (identities: { name: string; email: string }[]) => Promise<void>;
   };
   dailyReport: {
     fetch: (params: any) => Promise<any>;

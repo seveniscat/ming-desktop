@@ -678,6 +678,25 @@ function setupIPCHandlers(): void {
     return { success: true };
   });
 
+  // Get user's selected identities
+  ipcMain.handle(IPCChannels.GIT_GET_MY_IDENTITIES, () => {
+    const db = getDatabase();
+    const rows = db.prepare('SELECT name, email FROM user_identities').all() as { name: string; email: string }[];
+    return rows;
+  });
+
+  // Set user's selected identities (replaces all)
+  ipcMain.handle(IPCChannels.GIT_SET_MY_IDENTITIES, (_, identities: { name: string; email: string }[]) => {
+    const db = getDatabase();
+    const insert = db.prepare('INSERT OR IGNORE INTO user_identities (name, email) VALUES (?, ?)');
+    db.transaction(() => {
+      db.exec('DELETE FROM user_identities');
+      for (const id of identities) {
+        insert.run(id.name, id.email);
+      }
+    })();
+  });
+
   // Daily Report - 调用 daily-report tool 收集 Git 提交数据
   ipcMain.handle(IPCChannels.DAILY_REPORT_FETCH, async (_, params: any) => {
     const cacheKey = JSON.stringify(params || {});

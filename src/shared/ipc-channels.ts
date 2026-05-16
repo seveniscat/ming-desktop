@@ -59,6 +59,8 @@ export enum IPCChannels {
   GIT_GET_ALL_AUTHORS = 'git:get-all-authors',
   GIT_HEATMAP = 'git:heatmap',
   GIT_CLEAR_CACHE = 'git:clear-cache',
+  GIT_GET_MY_IDENTITIES = 'git:get-my-identities',
+  GIT_SET_MY_IDENTITIES = 'git:set-my-identities',
   DAILY_REPORT_FETCH = 'daily-report:fetch',
   DAILY_REPORT_SAVE = 'daily-report:save',
   DAILY_REPORT_LIST = 'daily-report:list',
