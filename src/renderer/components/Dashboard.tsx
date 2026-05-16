@@ -336,6 +336,28 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     return grouped;
   }, [commits]);
 
+  const handleGenerateReport = useCallback(() => {
+    if (commits.length === 0) return;
+
+    const lines: string[] = ['# Git Commit Report\n'];
+    for (const [repo, repoCommits] of Object.entries(commitsByRepo)) {
+      lines.push(`## ${repo} (${repoCommits.length} commits)\n`);
+      for (const c of repoCommits) {
+        lines.push(`- **${c.message}** (${c.hash.slice(0, 7)}) — ${c.author}, ${format(new Date(c.date), 'yyyy-MM-dd HH:mm')}`);
+        if (c.description) lines.push(`  > ${c.description}`);
+        if (c.additions || c.deletions) lines.push(`  +${c.additions} / -${c.deletions} in ${c.files_changed.length} files`);
+      }
+      lines.push('');
+    }
+
+    onStartChat?.({
+      agentName: 'Ming',
+      message: lines.join('\n'),
+      newConversation: true,
+      autoSend: true,
+    });
+  }, [commits, commitsByRepo, onStartChat]);
+
   const copyToClipboard = useCallback(async (text: string, hash?: string) => {
     try {
       await navigator.clipboard.writeText(text);
