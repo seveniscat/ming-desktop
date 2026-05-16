@@ -11,29 +11,6 @@ import AgentStatusBar from './AgentStatusBar';
 import type { Agent, LLMProvider, ChatLaunchRequest, Conversation } from './types';
 import type { PromptTemplate } from '../../../shared/types';
 
-const DAILY_REPORT_AGENT_NAME = 'Daily Reporter';
-
-function buildDailyReportInstruction(rangeLabel = '今天'): string {
-  return `请生成工作日报，时间范围：${rangeLabel}`;
-}
-
-function parseDailyReportCommand(rawInput: string): string | null {
-  const text = rawInput.trim();
-  const match = text.match(/^(?:\/日报|@日报|\/daily-report|@Daily Reporter)(?:\s+(.+))?$/i);
-  if (!match) return null;
-
-  const rangeText = (match[1] || '').trim();
-  if (!rangeText) return buildDailyReportInstruction();
-
-  const aliases: Record<string, string> = {
-    today: '今天', '今天': '今天',
-    yesterday: '昨天', '昨天': '昨天', '前天': '前天',
-    week: '本周', '本周': '本周', '这周': '本周',
-  };
-
-  return buildDailyReportInstruction(aliases[rangeText] || rangeText);
-}
-
 interface ChatLayoutProps {
   launchRequest?: ChatLaunchRequest | null;
   onLaunchHandled?: () => void;
@@ -181,21 +158,6 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
   const handleSendMessage = useCallback(async () => {
     if (!input.trim() || !selectedAgentId || isLoading) return;
-
-    const dailyReportMessage = parseDailyReportCommand(input);
-    if (dailyReportMessage) {
-      const dailyReporter = agents.find(a => a.name === DAILY_REPORT_AGENT_NAME);
-      if (dailyReporter) {
-        await sendConversationMessage({
-          agentId: dailyReporter.id,
-          message: dailyReportMessage,
-          model: selectedModel || undefined,
-          reuseAgentConversation: true,
-        });
-        setInput('');
-        return;
-      }
-    }
 
     await sendConversationMessage({
       agentId: selectedAgentId,

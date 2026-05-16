@@ -99,16 +99,6 @@ export default function ChatInput({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          title="日报"
-          onClick={() => setInput('/日报')}
-          disabled={isLoading}
-        >
-          <FileText size={14} />
-        </Button>
       </div>
 
       {/* Input container */}

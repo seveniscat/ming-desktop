@@ -17,17 +17,6 @@ export function useChatInput({
   const promptSuggestions = useMemo<PromptSuggestion[]>(() => {
     if (slashQuery === null) return [];
 
-    const builtins: PromptSuggestion[] = [
-      {
-        id: 'builtin-daily-report',
-        name: '生成日报',
-        trigger: '日报',
-        description: '复用 Daily Reporter 会话生成工作日报',
-        content: '/日报',
-        type: 'builtin',
-      },
-    ];
-
     const userPrompts = promptTemplates
       .filter((prompt) => prompt.enabled)
       .map<PromptSuggestion>((prompt) => ({
@@ -39,7 +28,7 @@ export function useChatInput({
         type: 'prompt',
       }));
 
-    const all = [...builtins, ...userPrompts];
+    const all = [...userPrompts];
     if (!slashQuery) return all.slice(0, 8);
 
     return all

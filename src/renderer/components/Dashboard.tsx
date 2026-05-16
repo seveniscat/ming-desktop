@@ -321,29 +321,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     }
   }, [workPaths, fetchHeatmap]);
 
-  const handleGenerateReport = async () => {
-    const timeRangeLabels: Record<string, string> = {
-      today: '今天',
-      yesterday: '昨天',
-      day_before_yesterday: '前天',
-      week: '本周',
-    };
-
-    let rangeLabel = timeRangeLabels[timeRange] || timeRange;
-    if (timeRange === 'custom') {
-      const parts = [];
-      if (customSince) parts.push(format(customSince, 'yyyy-MM-dd'));
-      if (customUntil) parts.push(`至 ${format(customUntil, 'yyyy-MM-dd')}`);
-      rangeLabel = parts.join(' ') || '自定义范围';
-    }
-
-    onStartChat?.({
-      agentName: 'Daily Reporter',
-      message: `请生成工作日报，时间范围：${rangeLabel}`,
-      reuseAgentConversation: true,
-      autoSend: false,
-    });
-  };
 
   // Group commits by repo
   const commitsByRepo = useMemo(() => {
@@ -812,35 +789,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
           </SheetContent>
         </Sheet>
 
-        {/* Daily Report Generator */}
-        <Card className="mb-8 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary/10">
-                  <TrendingUp size={20} className="text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl">Daily Report Generator</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">Generate work reports from Git commits</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button onClick={handleGenerateReport}>
-                  <Play size={18} />
-                  Generate in Chat
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-sm text-muted-foreground">
-              点击后会进入聊天页，并由 `Daily Reporter` 直接在会话中生成日报。
-            </p>
-          </CardContent>
-        </Card>
+        </div>
       </div>
-    </div>
   );
 }

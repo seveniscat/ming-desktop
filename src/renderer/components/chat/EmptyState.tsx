@@ -11,7 +11,6 @@ const suggestions = [
   { icon: Code, title: 'Write code', text: 'Help me write a React component', description: 'Generate or review code' },
   { icon: MessageSquare, title: 'Explain', text: 'Explain how this codebase works', description: 'Understand concepts' },
   { icon: Lightbulb, title: 'Debug', text: 'Help me fix this error', description: 'Troubleshoot issues' },
-  { icon: Sparkles, title: 'Daily Report', text: '/日报', description: 'Generate daily work report' },
 ];
 
 export default function EmptyState({ agentName, onSuggestionClick }: EmptyStateProps) {
