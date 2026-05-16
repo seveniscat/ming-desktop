@@ -97,7 +97,7 @@ export function useChatInput({
     if (!pendingVariablePrompt) return;
     let rendered = pendingVariablePrompt.content;
     for (const [key, value] of Object.entries(values)) {
-      rendered = rendered.replaceAll(`{${key}}`, value);
+      rendered = rendered.split(`{${key}}`).join(value);
     }
     setInput(rendered);
     setPendingVariablePrompt(null);

@@ -3,7 +3,6 @@ import { Play, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import type { PromptTemplate } from '../../../shared/types';
 
@@ -51,7 +50,7 @@ export default function PromptTester({ prompt }: PromptTesterProps) {
   const renderedContent = useMemo(() => {
     let content = prompt.content;
     for (const [key, value] of Object.entries(variableValues)) {
-      content = content.replaceAll(`{${key}}`, value || `{${key}}`);
+      content = content.split(`{${key}}`).join(value || `{${key}}`);
     }
     return content;
   }, [prompt.content, variableValues]);
