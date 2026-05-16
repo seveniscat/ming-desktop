@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Skill, SkillConfig, SkillSyncResult } from '../../shared/types';
+import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { getDatabase } from '../database/connection';
 
@@ -36,6 +37,8 @@ export class SkillManager extends EventEmitter {
     }
 
     Logger.info(`Initialized ${this.skills.size} skills`);
+
+    this.ensureBuiltInSkills();
   }
 
   listSkills(): Skill[] {
@@ -321,5 +324,56 @@ export class SkillManager extends EventEmitter {
     if (normalized.includes('/.codex/skills/')) return 'codex';
     if (normalized.includes('/.agents/skills/')) return 'agents';
     return 'local';
+  }
+
+  private ensureBuiltInSkills(): void {
+    const builtInSkills: Array<{ id: string; name: string; description: string; prompt: string }> = [
+      {
+        id: 'builtin-daily-reporter',
+        name: '日报生成器',
+        description: '根据 Git 提交记录生成工作日报',
+        prompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
+      },
+    ];
+
+    for (const def of builtInSkills) {
+      if (this.skills.has(def.id)) {
+        // Update prompt if it changed
+        const existing = this.skills.get(def.id)!;
+        if (existing.prompt !== def.prompt) {
+          existing.prompt = def.prompt;
+          existing.updatedAt = new Date().toISOString();
+          const db = getDatabase();
+          db.prepare('UPDATE skills SET prompt = ?, updated_at = ? WHERE id = ?')
+            .run(def.prompt, existing.updatedAt, def.id);
+          Logger.info(`Updated built-in skill: ${def.name}`);
+        }
+        continue;
+      }
+
+      const skill: Skill = {
+        id: def.id,
+        name: def.name,
+        description: def.description,
+        prompt: def.prompt,
+        enabled: true,
+        sourcePath: undefined,
+        sourceType: 'builtin',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      this.skills.set(skill.id, skill);
+      const db = getDatabase();
+      db.prepare(`
+        INSERT INTO skills (id, name, description, prompt, enabled, source_path, source_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        skill.id, skill.name, skill.description, skill.prompt,
+        1, null, skill.sourceType,
+        skill.createdAt, skill.updatedAt,
+      );
+      Logger.info(`Created built-in skill: ${def.name}`);
+    }
   }
 }
