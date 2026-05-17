@@ -10,9 +10,11 @@ function extractVariables(content: string): string[] {
 export function useChatInput({
   promptTemplates,
   isLoading,
+  onActivateSkill,
 }: {
   promptTemplates: PromptTemplate[];
   isLoading: boolean;
+  onActivateSkill?: (skillId: string) => void;
 }) {
   const [input, setInput] = useState('');
   const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
@@ -83,6 +85,15 @@ export function useChatInput({
   }, [slashQuery]);
 
   const applyPromptSuggestion = useCallback((suggestion: PromptSuggestion) => {
+    if (suggestion.type === 'skill') {
+      const skillId = suggestion.id.replace('skill-', '');
+      onActivateSkill?.(skillId);
+      setInput('');
+      requestAnimationFrame(() => inputRef.current?.focus());
+      setSelectedPromptIndex(0);
+      return;
+    }
+
     const vars = extractVariables(suggestion.content);
     if (vars.length > 0 && suggestion.type === 'prompt') {
       setPendingVariablePrompt(suggestion);
@@ -91,7 +102,7 @@ export function useChatInput({
       requestAnimationFrame(() => inputRef.current?.focus());
     }
     setSelectedPromptIndex(0);
-  }, []);
+  }, [onActivateSkill]);
 
   const applyVariableValues = useCallback((values: Record<string, string>) => {
     if (!pendingVariablePrompt) return;
