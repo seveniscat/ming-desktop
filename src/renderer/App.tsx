@@ -9,6 +9,8 @@ import PromptsPage from './pages/PromptsPage';
 import Settings from './components/Settings';
 import DeveloperToolsPage from './components/DeveloperToolsPage';
 import ToolsPage from './pages/ToolsPage';
+import McpServersPage from './pages/McpServersPage';
+import McpDebugPage from './pages/McpDebugPage';
 import ToolApprovalDialog from './components/tools/ToolApprovalDialog';
 import DebugPanel from './components/DebugPanel';
 import ClientPerformanceMonitor from './components/ClientPerformanceMonitor';
@@ -112,6 +114,8 @@ function App() {
               )}
               {activeTab === 'skills' && <SkillManager />}
               {activeTab === 'tools' && <ToolsPage />}
+              {activeTab === 'mcp-servers' && <McpServersPage />}
+              {activeTab === 'mcp-debug' && <McpDebugPage />}
               {activeTab === 'prompts' && <PromptsPage />}
               {activeTab === 'settings' && <Settings />}
             </div>
