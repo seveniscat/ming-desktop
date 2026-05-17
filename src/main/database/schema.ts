@@ -355,4 +355,50 @@ export function runMigrations(): void {
     `);
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration12Name);
   }
+
+  // Migration: add MCP tables
+  const migration13Name = 'add-mcp-tables';
+  const applied13 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration13Name);
+  if (!applied13) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mcp_servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        transport_type TEXT NOT NULL CHECK(transport_type IN ('stdio', 'sse')),
+        command TEXT,
+        args TEXT DEFAULT '[]',
+        env TEXT DEFAULT '{}',
+        url TEXT,
+        enabled INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'disconnected',
+        error_message TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_tools (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        input_schema TEXT,
+        FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_protocol_log (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        direction TEXT NOT NULL CHECK(direction IN ('sent', 'received')),
+        message_type TEXT NOT NULL,
+        method TEXT,
+        payload_json TEXT NOT NULL,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mcp_protocol_log_server ON mcp_protocol_log(server_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_mcp_protocol_log_type ON mcp_protocol_log(message_type);
+    `);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration13Name);
+  }
 }
