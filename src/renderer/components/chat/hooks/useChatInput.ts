@@ -132,5 +132,6 @@ export function useChatInput({
     pendingVariablePrompt,
     applyVariableValues,
     cancelVariableFill,
+    skills,
   };
 }
