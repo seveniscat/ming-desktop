@@ -55,6 +55,9 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     isLoading,
     sendConversationMessage,
     handleAbortChat,
+    activateSkill,
+    deactivateSkill,
+    getActiveSkills,
   } = useChatMessages({
     currentConversationId,
     setCurrentConversationId,
@@ -68,6 +71,17 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     loadConversations,
   });
 
+  const handleActivateSkill = useCallback(async (skillId: string) => {
+    let convId = currentConversationId;
+    if (!convId) {
+      const conv = await window.electronAPI.conversations.create({});
+      convId = conv.id;
+      setConversations(prev => [conv, ...prev]);
+      setCurrentConversationId(convId);
+    }
+    activateSkill(convId!, skillId);
+  }, [currentConversationId, activateSkill, setConversations, setCurrentConversationId]);
+
   const {
     input,
     setInput,
@@ -80,7 +94,20 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     pendingVariablePrompt,
     applyVariableValues,
     cancelVariableFill,
-  } = useChatInput({ promptTemplates, isLoading });
+    skills: availableSkills,
+  } = useChatInput({ promptTemplates, isLoading, onActivateSkill: handleActivateSkill });
+
+  const activeSkillBadges = (currentConversationId ? getActiveSkills(currentConversationId) : [])
+    .map(id => {
+      const skill = availableSkills.find((s: any) => s.id === id);
+      return skill ? { id: skill.id, name: skill.name } : { id, name: id };
+    });
+
+  const handleRemoveSkill = useCallback((skillId: string) => {
+    if (currentConversationId) {
+      deactivateSkill(currentConversationId, skillId);
+    }
+  }, [currentConversationId, deactivateSkill]);
 
   // Load initial data
   useEffect(() => {
@@ -289,6 +316,8 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
           onAbort={handleAbortChat}
           onKeyDown={handleInputKeyDown}
           onApplyPromptSuggestion={applyPromptSuggestion}
+          activeSkillBadges={activeSkillBadges}
+          onRemoveSkill={handleRemoveSkill}
         />
       </div>
 
