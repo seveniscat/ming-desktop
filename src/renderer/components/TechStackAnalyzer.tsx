@@ -3,6 +3,7 @@ import { PackageOpen, FolderSearch, Loader2, Upload, FileCode, Layers, Cpu, Wren
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 
 interface FrameworkDetection {
   name: string;
@@ -187,6 +188,7 @@ function generateProjectMarkdown(result: ProjectAnalysisResult): string {
 
 function AppResult({ result }: { result: AppAnalysisResult }) {
   const [copied, setCopied] = useState(false);
+  const [detailCategory, setDetailCategory] = useState<string | null>(null);
 
   const handleCopy = async () => {
     const md = generateAppMarkdown(result);
@@ -194,6 +196,18 @@ function AppResult({ result }: { result: AppAnalysisResult }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Group detected libraries by category for detail view
+  const libsByCategory: Record<string, DetectedLibrary[]> = {};
+  if (result.detectedLibraries) {
+    for (const lib of result.detectedLibraries) {
+      if (!libsByCategory[lib.category]) libsByCategory[lib.category] = [];
+      libsByCategory[lib.category].push(lib);
+    }
+  }
+
+  const detailLibs = detailCategory ? (libsByCategory[detailCategory] || []) : [];
+  const detailDeps = detailCategory ? (result.categorizedDependencies?.[detailCategory] || []) : [];
 
   return (
     <div className="space-y-6">
@@ -267,43 +281,6 @@ function AppResult({ result }: { result: AppAnalysisResult }) {
         </div>
       )}
 
-      {/* Detected Libraries — detailed fingerprint results */}
-      {result.detectedLibraries && result.detectedLibraries.length > 0 && (
-        <div className="space-y-3">
-          <SectionTitle icon={Eye} title="技术栈详情" />
-          <div className="text-xs text-muted-foreground mb-2">
-            通过 package.json、JS/CSS 指纹扫描检测到 {result.detectedLibraries.length} 个库
-          </div>
-          {(() => {
-            const byCategory: Record<string, DetectedLibrary[]> = {};
-            for (const lib of result.detectedLibraries) {
-              if (!byCategory[lib.category]) byCategory[lib.category] = [];
-              byCategory[lib.category].push(lib);
-            }
-            return Object.entries(byCategory).map(([category, libs]) => (
-              <div key={category} className="rounded-lg border bg-card p-4 space-y-2">
-                <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  {category}
-                  <Badge variant="secondary" className="text-[10px] px-1.5">{libs.length}</Badge>
-                </div>
-                <div className="space-y-1">
-                  {libs.map(lib => (
-                    <div key={lib.name} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/30 text-sm">
-                      <span className="font-medium flex-1">{lib.name}</span>
-                      {lib.version && (
-                        <span className="text-xs text-muted-foreground font-mono">{lib.version}</span>
-                      )}
-                      <SourceBadge source={lib.source} />
-                      <ConfidenceBadge level={lib.confidence} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ));
-          })()}
-        </div>
-      )}
-
       {/* Resources */}
       {result.resources.type && (
         <div className="space-y-3">
@@ -322,13 +299,22 @@ function AppResult({ result }: { result: AppAnalysisResult }) {
           <div className="grid grid-cols-2 gap-4">
             {Object.entries(result.categorizedDependencies).map(([category, deps]) => (
               <div key={category} className="space-y-2 rounded-lg border bg-card p-4">
-                <div className="text-sm font-semibold text-foreground">{category}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-foreground">{category}</div>
+                  <button
+                    type="button"
+                    onClick={() => setDetailCategory(category)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    查看详情
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {deps.slice(0, 8).map(dep => (
+                  {deps.slice(0, 5).map(dep => (
                     <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
                   ))}
-                  {deps.length > 8 && (
-                    <Badge variant="secondary" className="text-xs">+{deps.length - 8} more</Badge>
+                  {deps.length > 5 && (
+                    <Badge variant="secondary" className="text-xs">+{deps.length - 5} more</Badge>
                   )}
                 </div>
               </div>
@@ -348,12 +334,47 @@ function AppResult({ result }: { result: AppAnalysisResult }) {
           </div>
         </div>
       )}
+
+      {/* Detail Modal */}
+      <Dialog open={!!detailCategory} onOpenChange={(open) => { if (!open) setDetailCategory(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{detailCategory}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto -mx-6 px-6">
+            {detailLibs.length > 0 && (
+              <div className="rounded-lg border bg-card p-4 space-y-1 mb-4">
+                {detailLibs.map(lib => (
+                  <div key={lib.name} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm">
+                    <span className="font-medium flex-1">{lib.name}</span>
+                    {lib.version && (
+                      <span className="text-xs text-muted-foreground font-mono">{lib.version}</span>
+                    )}
+                    <SourceBadge source={lib.source} />
+                    <ConfidenceBadge level={lib.confidence} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {detailDeps.length > 0 && (
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex flex-wrap gap-1.5">
+                  {detailDeps.map(dep => (
+                    <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function ProjectResult({ result }: { result: ProjectAnalysisResult }) {
   const [copied, setCopied] = useState(false);
+  const [detailCategory, setDetailCategory] = useState<string | null>(null);
 
   const handleCopy = async () => {
     const md = generateProjectMarkdown(result);
@@ -361,6 +382,8 @@ function ProjectResult({ result }: { result: ProjectAnalysisResult }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const detailDeps = detailCategory ? (result.categorizedDependencies[detailCategory] || []) : [];
 
   return (
     <div className="space-y-6">
@@ -473,17 +496,47 @@ function ProjectResult({ result }: { result: ProjectAnalysisResult }) {
           <div className="grid grid-cols-2 gap-4">
             {Object.entries(result.categorizedDependencies).map(([category, deps]) => (
               <div key={category} className="space-y-2 rounded-lg border bg-card p-4">
-                <div className="text-sm font-semibold text-foreground">{category}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-foreground">{category}</div>
+                  <button
+                    type="button"
+                    onClick={() => setDetailCategory(category)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    查看详情
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {deps.map(dep => (
+                  {deps.slice(0, 5).map(dep => (
                     <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
                   ))}
+                  {deps.length > 5 && (
+                    <Badge variant="secondary" className="text-xs">+{deps.length - 5} more</Badge>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* Detail Modal */}
+      <Dialog open={!!detailCategory} onOpenChange={(open) => { if (!open) setDetailCategory(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{detailCategory}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto -mx-6 px-6">
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex flex-wrap gap-1.5">
+                {detailDeps.map(dep => (
+                  <Badge key={dep} variant="outline" className="text-xs">{dep}</Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

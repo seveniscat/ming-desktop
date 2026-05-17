@@ -7,7 +7,7 @@ import AgentChat from './components/AgentChat';
 import SkillManager from './components/SkillManager';
 import PromptsPage from './pages/PromptsPage';
 import Settings from './components/Settings';
-import TechStackAnalyzer from './components/TechStackAnalyzer';
+import DeveloperToolsPage from './components/DeveloperToolsPage';
 import ToolsPage from './pages/ToolsPage';
 import ToolApprovalDialog from './components/tools/ToolApprovalDialog';
 import DebugPanel from './components/DebugPanel';
@@ -102,7 +102,7 @@ function App() {
             {/* Content */}
             <div className="flex-1 overflow-hidden w-full">
               {activeTab === 'welcome' && <Welcome />}
-              {activeTab === 'techstack' && <TechStackAnalyzer />}
+              {activeTab === 'devtools' && <DeveloperToolsPage />}
               {activeTab === 'dashboard' && <Dashboard onStartChat={handleStartChat} />}
               {activeTab === 'chat' && (
                 <AgentChat

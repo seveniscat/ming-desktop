@@ -13,7 +13,7 @@ interface NavRailProps {
 const navItems = [
   { id: 'welcome', icon: Home, label: 'Home' },
   { id: 'dashboard', icon: LayoutDashboard, label: 'WorkGround' },
-  { id: 'techstack', icon: Search, label: 'TechStack' },
+  { id: 'devtools', icon: Search, label: 'DevTools' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'skills', icon: Zap, label: 'Skills' },
   { id: 'tools', icon: Wrench, label: 'Tools' },
