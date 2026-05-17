@@ -21,6 +21,26 @@ export class ToolExecutor {
     Logger.info(`Tool registered: ${entry.definition.function.name}`);
   }
 
+  unregister(name: string): boolean {
+    return this.tools.delete(name);
+  }
+
+  registerMcpTool(mcpToolName: string, definition: ToolDefinition, handler: ToolHandler): void {
+    this.tools.set(mcpToolName, { definition, handler });
+    Logger.info(`MCP tool registered: ${mcpToolName}`);
+  }
+
+  clearMcpTools(): number {
+    let removed = 0;
+    for (const key of Array.from(this.tools.keys())) {
+      if (key.startsWith('mcp__')) {
+        this.tools.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   setApprovalManager(manager: ToolApprovalManager): void {
     this.approvalManager = manager;
   }

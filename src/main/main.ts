@@ -194,6 +194,9 @@ async function initializeServices(): Promise<void> {
   mcpManager = new MCPManager();
   await mcpManager.initialize();
 
+  // Sync MCP tools into ToolExecutor so they're available in chat
+  syncMcpTools();
+
   Logger.info('All services initialized successfully');
 }
 
@@ -873,7 +876,55 @@ function setupIPCHandlers(): void {
     }
   });
 
+  // Keep MCP tools synced into ToolExecutor for chat integration
+  mcpManager.on('server-tools', () => syncMcpTools());
+  mcpManager.on('server-deleted', () => syncMcpTools());
+  mcpManager.on('server-status', () => syncMcpTools());
+
   Logger.info('IPC handlers registered');
+}
+
+// ─── MCP Tool Sync ───────────────────────────────────────────────────
+
+function syncMcpTools(): void {
+  if (!mcpManager || !toolExecutor) return;
+
+  // Remove all existing MCP tools
+  toolExecutor.clearMcpTools();
+
+  // Re-register tools from all connected servers
+  const servers = mcpManager.listServers();
+  for (const server of servers) {
+    if (server.status !== 'connected') continue;
+
+    const tools = mcpManager.listTools(server.id);
+    const serverSlug = server.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    for (const tool of tools) {
+      const mcpToolName = `mcp__${serverSlug}__${tool.name}`;
+
+      let schema = {};
+      try { schema = tool.input_schema ? JSON.parse(tool.input_schema) : {}; } catch {}
+
+      toolExecutor.registerMcpTool(
+        mcpToolName,
+        {
+          type: 'function',
+          function: {
+            name: mcpToolName,
+            description: `[MCP:${server.name}] ${tool.description || tool.name}`,
+            parameters: schema.type ? schema : { type: 'object', properties: {} },
+          },
+        },
+        async (params) => {
+          const result = await mcpManager.callTool(server.id, tool.name, params);
+          return typeof result === 'string' ? result : JSON.stringify(result);
+        },
+      );
+    }
+  }
+
+  Logger.info(`MCP tools synced: ${servers.filter(s => s.status === 'connected').length} servers`);
 }
 
 // ─── TechStack Analysis Functions ─────────────────────────────────────
