@@ -175,6 +175,41 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send(IPCChannels.TOOL_APPROVAL_RESPONSE, requestId, approved);
     },
   },
+
+  // MCP Server API
+  mcpServers: {
+    list: () => ipcRenderer.invoke(IPCChannels.MCP_SERVER_LIST),
+    get: (serverId: string) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_GET, serverId),
+    create: (config: any) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_CREATE, config),
+    update: (serverId: string, updates: any) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_UPDATE, serverId, updates),
+    delete: (serverId: string) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_DELETE, serverId),
+    connect: (serverId: string) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_CONNECT, serverId),
+    disconnect: (serverId: string) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_DISCONNECT, serverId),
+    refreshTools: (serverId: string) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_REFRESH_TOOLS, serverId),
+    callTool: (serverId: string, toolName: string, args: any) => ipcRenderer.invoke(IPCChannels.MCP_SERVER_CALL_TOOL, serverId, toolName, args),
+    onStatusChange: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.MCP_SERVER_STATUS_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.MCP_SERVER_STATUS_EVENT, listener);
+    },
+    onToolsChange: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.MCP_SERVER_TOOLS_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.MCP_SERVER_TOOLS_EVENT, listener);
+    },
+  },
+
+  // MCP Debug API
+  mcpDebug: {
+    getLogs: (serverId?: string) => ipcRenderer.invoke(IPCChannels.MCP_DEBUG_LOGS, serverId),
+    clearLogs: (serverId?: string) => ipcRenderer.invoke(IPCChannels.MCP_DEBUG_CLEAR, serverId),
+    exportLogs: (serverId?: string) => ipcRenderer.invoke(IPCChannels.MCP_DEBUG_EXPORT, serverId),
+    onLogEvent: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.MCP_DEBUG_LOG_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.MCP_DEBUG_LOG_EVENT, listener);
+    },
+  },
 });
 
 // 类型定义
@@ -276,5 +311,24 @@ export interface ElectronAPI {
     execute: (toolId: string, params: any) => Promise<{ result: string; duration: number }>;
     onApprovalRequest: (callback: (data: any) => void) => () => void;
     respondApproval: (requestId: string, approved: boolean) => void;
+  };
+  mcpServers: {
+    list: () => Promise<any[]>;
+    get: (serverId: string) => Promise<any>;
+    create: (config: any) => Promise<string>;
+    update: (serverId: string, updates: any) => Promise<void>;
+    delete: (serverId: string) => Promise<void>;
+    connect: (serverId: string) => Promise<void>;
+    disconnect: (serverId: string) => Promise<void>;
+    refreshTools: (serverId: string) => Promise<any[]>;
+    callTool: (serverId: string, toolName: string, args: any) => Promise<any>;
+    onStatusChange: (callback: (data: any) => void) => () => void;
+    onToolsChange: (callback: (data: any) => void) => () => void;
+  };
+  mcpDebug: {
+    getLogs: (serverId?: string) => Promise<any[]>;
+    clearLogs: (serverId?: string) => Promise<void>;
+    exportLogs: (serverId?: string) => Promise<string>;
+    onLogEvent: (callback: (data: any) => void) => () => void;
   };
 }
