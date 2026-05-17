@@ -19,12 +19,30 @@ interface ServerFormData {
 }
 
 function serverToFormData(server: any): ServerFormData {
+  let args = '';
+  try {
+    const parsed = JSON.parse(server.args || '[]');
+    args = Array.isArray(parsed) ? parsed.join('\n') : '';
+  } catch {
+    args = server.args || '';
+  }
+
+  let env = '';
+  try {
+    const parsed = JSON.parse(server.env || '{}');
+    env = typeof parsed === 'object' && parsed !== null
+      ? Object.entries(parsed).map(([k, v]) => `${k}=${v}`).join('\n')
+      : '';
+  } catch {
+    env = server.env || '';
+  }
+
   return {
     name: server.name || '',
     transport_type: server.transport_type || 'stdio',
     command: server.command || '',
-    args: server.args || '',
-    env: server.env || '',
+    args,
+    env,
     url: server.url || '',
     enabled: !!server.enabled,
   };
@@ -94,7 +112,7 @@ export default function McpServersPage() {
   useEffect(() => {
     if (!api) return;
     const unsubscribe = api.onStatusChange((data: any) => {
-      updateServerStatus(data.serverId, data.status, data.error);
+      updateServerStatus(data.id, data.status, data.error);
     });
     return unsubscribe;
   }, [updateServerStatus]);
@@ -143,14 +161,27 @@ export default function McpServersPage() {
   const handleSaveNew = async (data: ServerFormData) => {
     if (!api) return;
     try {
+      const parsedArgs = data.args
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const parsedEnv: Record<string, string> = {};
+      for (const line of data.env.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          parsedEnv[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim();
+        }
+      }
       const id = await api.create({
         name: data.name,
-        transport_type: data.transport_type,
+        transportType: data.transport_type,
         command: data.command || null,
-        args: data.args,
-        env: data.env,
+        args: parsedArgs,
+        env: parsedEnv,
         url: data.url || null,
-        enabled: data.enabled ? 1 : 0,
+        enabled: data.enabled ? true : false,
       });
       setIsAddMode(false);
       await loadServers();
@@ -164,14 +195,27 @@ export default function McpServersPage() {
   const handleSaveExisting = async (data: ServerFormData) => {
     if (!api || !selectedServerId) return;
     try {
+      const parsedArgs = data.args
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const parsedEnv: Record<string, string> = {};
+      for (const line of data.env.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          parsedEnv[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim();
+        }
+      }
       await api.update(selectedServerId, {
         name: data.name,
-        transport_type: data.transport_type,
+        transportType: data.transport_type,
         command: data.command || null,
-        args: data.args,
-        env: data.env,
+        args: parsedArgs,
+        env: parsedEnv,
         url: data.url || null,
-        enabled: data.enabled ? 1 : 0,
+        enabled: data.enabled ? true : false,
       });
       await loadServers();
     } catch (error) {
