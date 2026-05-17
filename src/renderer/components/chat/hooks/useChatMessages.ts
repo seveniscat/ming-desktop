@@ -40,6 +40,7 @@ export function useChatMessages({
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeSkills, setActiveSkills] = useState<Map<string, string[]>>(new Map());
 
   const sendConversationMessage = useCallback(async ({
     message,
@@ -230,8 +231,33 @@ export function useChatMessages({
 
     if (!convId) return;
     // Send with null agentId — direct LLM + tools mode
-    window.electronAPI.conversations.chat(convId, null, message, model || selectedModel || undefined);
-  }, [isLoading, currentConversationId, selectedModel, activeConversationRef, setCurrentConversationId, setSelectedModel, setExecutionState, getLatestConversations, loadConversationMessages, setConversations, loadConversations]);
+    const skillIds = activeSkills.get(convId) || [];
+    window.electronAPI.conversations.chat(convId, null, message, model || selectedModel || undefined, skillIds.length > 0 ? skillIds : undefined);
+  }, [isLoading, currentConversationId, selectedModel, activeConversationRef, setCurrentConversationId, setSelectedModel, setExecutionState, getLatestConversations, loadConversationMessages, setConversations, loadConversations, activeSkills]);
+
+  const activateSkill = useCallback((convId: string, skillId: string) => {
+    setActiveSkills(prev => {
+      const next = new Map(prev);
+      const existing = next.get(convId) || [];
+      if (!existing.includes(skillId)) {
+        next.set(convId, [...existing, skillId]);
+      }
+      return next;
+    });
+  }, []);
+
+  const deactivateSkill = useCallback((convId: string, skillId: string) => {
+    setActiveSkills(prev => {
+      const next = new Map(prev);
+      const existing = next.get(convId) || [];
+      next.set(convId, existing.filter(id => id !== skillId));
+      return next;
+    });
+  }, []);
+
+  const getActiveSkills = useCallback((convId: string) => {
+    return activeSkills.get(convId) || [];
+  }, [activeSkills]);
 
   const handleAbortChat = useCallback(() => {
     if (!currentConversationId) return;
@@ -261,5 +287,9 @@ export function useChatMessages({
     setIsLoading,
     sendConversationMessage,
     handleAbortChat,
+    activeSkills,
+    activateSkill,
+    deactivateSkill,
+    getActiveSkills,
   };
 }
