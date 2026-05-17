@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Skill, SkillConfig, SkillSyncResult } from '../../shared/types';
-import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
+import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { getDatabase } from '../database/connection';
 
@@ -335,6 +335,13 @@ export class SkillManager extends EventEmitter {
         description: '根据 Git 提交记录生成工作日报',
         prompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
         autoMessage: '生成今天的工作日报',
+      },
+      {
+        id: 'builtin-weekly-reporter',
+        name: '周报生成器',
+        description: '根据本周 Git 提交记录生成工作周报',
+        prompt: DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT,
+        autoMessage: '生成本周的工作周报',
       },
     ];
 
