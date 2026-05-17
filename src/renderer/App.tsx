@@ -15,6 +15,7 @@ import ToolApprovalDialog from './components/tools/ToolApprovalDialog';
 import DebugPanel from './components/DebugPanel';
 import ClientPerformanceMonitor from './components/ClientPerformanceMonitor';
 import { ThemeProvider } from './components/ThemeProvider';
+import { IdentityProvider } from './components/IdentityProvider';
 
 interface ChatLaunchRequest {
   agentName: string;
@@ -87,6 +88,7 @@ function App() {
 
   return (
     <ThemeProvider>
+      <IdentityProvider>
       <ClientPerformanceMonitor source={isDebugView ? 'debug-window' : 'main-window'} />
       <ToolApprovalDialog />
       {isDebugView ? (
@@ -122,6 +124,7 @@ function App() {
           </div>
         </div>
       )}
+      </IdentityProvider>
     </ThemeProvider>
   );
 }

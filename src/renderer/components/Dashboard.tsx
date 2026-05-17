@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Calendar as CalendarIcon, GitBranch, FileText, Play, RefreshCw, Folder, Activity, User, Plus, Minus, Copy, Check, X, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardContent } from './ui/card';
@@ -9,9 +9,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Separator } from './ui/separator';
 import { cn } from '@/lib/utils';
 import GitHeatmap from './GitHeatmap';
+import { useIdentities } from './IdentityProvider';
 
 interface GitRepo {
   name: string;
@@ -66,6 +66,7 @@ let cachedStatsData: StatsCache | null = null;
 let statsFetchPromise: Promise<StatsCache | null> | null = null;
 
 export default function Dashboard({ onStartChat }: DashboardProps) {
+  const { identities: myIdentities, setIdentities: setMyIdentities } = useIdentities();
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const [timeRange, setTimeRange] = useState<string>('today');
   const [customSince, setCustomSince] = useState<Date>();
@@ -79,7 +80,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
   const [gitRepos, setGitRepos] = useState<GitRepo[]>([]);
   const [activeSheet, setActiveSheet] = useState<'commits' | 'repos' | null>(null);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
-  const [gitUser, setGitUser] = useState({ name: '', email: '' });
   const [gitAuthors, setGitAuthors] = useState<{ name: string; email: string }[]>([]);
   const [heatmapData, setHeatmapData] = useState<{
     data: Record<string, number>;
@@ -92,10 +92,13 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     };
   } | null>(null);
   const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
-  const [myIdentities, setMyIdentities] = useState<{ name: string; email: string }[]>([]);
   const [identityDialogOpen, setIdentityDialogOpen] = useState(false);
   const [selectedIdentities, setSelectedIdentities] = useState<Set<string>>(new Set());
   const [identitySearch, setIdentitySearch] = useState('');
+
+  // Keep identities in a ref so fetchHeatmap/fetchStats don't depend on the array reference
+  const identitiesRef = useRef(myIdentities);
+  identitiesRef.current = myIdentities;
 
   const fetchHeatmap = useCallback(async (forceRefresh = false) => {
     // Clear memory cache if forcing refresh
@@ -111,7 +114,8 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
 
     // Deduplicate: reuse in-flight request
     if (!heatmapFetchPromise) {
-      const authorNames = myIdentities.length > 0 ? myIdentities.map(i => i.name) : undefined;
+      const ids = identitiesRef.current;
+      const authorNames = ids.length > 0 ? ids.map(i => i.name) : undefined;
       heatmapFetchPromise = window.electronAPI.git.heatmap(authorNames)
         .then(result => {
           cachedHeatmapData = result;
@@ -129,7 +133,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     const result = await heatmapFetchPromise;
     if (result) setHeatmapData(result);
     setIsHeatmapLoading(false);
-  }, [myIdentities]);
+  }, []);
 
   // Sort repos by activity: repos with commits first (sorted by date desc), then repos without commits
   const sortedGitRepos = useMemo(() => {
@@ -174,16 +178,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     }
   }, []);
 
-  const loadMyIdentities = useCallback(async () => {
-    try {
-      const identities = await window.electronAPI.git.getMyIdentities();
-      setMyIdentities(identities);
-      setSelectedIdentities(new Set(identities.map(i => `${i.name}|${i.email}`)));
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const handleAddPath = async () => {
     try {
       const result = await window.electronAPI.dialog.showOpenDialog({
@@ -213,9 +207,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
 
   useEffect(() => {
     loadWorkPaths();
-    window.electronAPI.git.getUser().then(setGitUser).catch(() => {});
-    loadMyIdentities();
-  }, [loadWorkPaths, loadMyIdentities]);
+  }, [loadWorkPaths]);
 
   useEffect(() => {
     if (workPaths.length > 0) {
@@ -235,15 +227,16 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
       timeRange: timeRange === 'custom' ? 'today' : timeRange,
       includeAllBranches: true,
     };
-    if (myIdentities.length > 0) {
-      params.authors = myIdentities.map(i => i.name);
+    const ids = identitiesRef.current;
+    if (ids.length > 0) {
+      params.authors = ids.map(i => i.name);
     }
     if (timeRange === 'custom') {
       if (customSince) params.sinceDate = format(customSince, 'yyyy-MM-dd');
       if (customUntil) params.untilDate = format(customUntil, 'yyyy-MM-dd');
     }
     return params;
-  }, [timeRange, customSince, customUntil, myIdentities]);
+  }, [timeRange, customSince, customUntil]);
 
   const fetchStats = useCallback(async (forceRefresh = false) => {
     const params = buildReportParams();
@@ -311,23 +304,32 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
     }
   }, [workPaths, fetchStats]);
 
-  // Refetch stats and heatmap when identities change
+  // Refetch stats when time range changes (cache is keyed by params, so re-fetch with new params)
   useEffect(() => {
-    if (workPaths.length > 0) {
-      // Clear memory caches when identities change (persistent cache in backend will be used)
+    if (workPaths.length > 0 && myIdentities.length > 0) {
+      cachedStatsData = null;
+      fetchStats(true);
+    }
+  }, [timeRange, customSince, customUntil, workPaths.length]);
+
+  // Refetch stats and heatmap when identities actually change (compare names, not reference)
+  const identityKey = myIdentities.map(i => `${i.name}|${i.email}`).sort().join(',');
+  useEffect(() => {
+    if (workPaths.length > 0 && identityKey) {
       cachedStatsData = null;
       cachedHeatmapData = null;
       fetchStats(true);
       fetchHeatmap(true);
     }
-  }, [myIdentities, workPaths.length, fetchStats, fetchHeatmap]);
+  }, [identityKey, workPaths.length]);
 
-  // Load heatmap on initial mount
+  // Load stats and heatmap on initial mount (uses cache if available)
   useEffect(() => {
     if (workPaths.length > 0) {
+      fetchStats();
       fetchHeatmap();
     }
-  }, [workPaths, fetchHeatmap]);
+  }, [workPaths, fetchStats, fetchHeatmap]);
 
 
   // Group commits by repo
@@ -408,43 +410,48 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
           </div>
         </div>
 
-        {/* User Info Card - First */}
-        {(myIdentities.length > 0 || gitUser.name) && (
+        {/* My Identities Card */}
+        {gitAuthors.length > 0 && (
           <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-lg bg-violet-500/10">
-                  <User size={28} className="text-violet-500" />
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <User size={16} className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-secondary-foreground">
+                    My Identities
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {myIdentities.length} selected
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  {myIdentities.length > 0 ? (
-                    <>
-                      <div className="text-xl font-bold text-foreground truncate">
-                        {myIdentities.map(i => i.name).join(', ')}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {myIdentities.length} identit{myIdentities.length === 1 ? 'y' : 'ies'} selected
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-xl font-bold text-foreground truncate">{gitUser.name}</div>
-                      <div className="text-sm text-muted-foreground truncate">{gitUser.email}</div>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-foreground">{stats.totalCommits}</div>
-                    <div>Commits</div>
-                  </div>
-                  <Separator orientation="vertical" className="h-10" />
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-foreground">{gitRepos.length}</div>
-                    <div>Repos</div>
-                  </div>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedIdentities(new Set(myIdentities.map(i => `${i.name}|${i.email}`)));
+                    setIdentitySearch('');
+                    setIdentityDialogOpen(true);
+                  }}
+                >
+                  Manage
+                </Button>
               </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {myIdentities.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {myIdentities.map((id, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs gap-1">
+                      {id.name}
+                      {id.email && <span className="opacity-60 font-normal">{id.email}</span>}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Click "Manage" to select your identities
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -479,15 +486,31 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                     Work Paths ({workPaths.length})
                   </span>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleAddPath}
-                  className="flex items-center gap-2"
-                >
-                  <Plus size={14} />
-                  Add Folder
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      setIsRefreshing(true);
+                      await loadGitRepos();
+                      setIsRefreshing(false);
+                    }}
+                    className="flex items-center gap-2"
+                    disabled={isRefreshing}
+                  >
+                    <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+                    Rescan
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAddPath}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus size={14} />
+                    Add Folder
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
@@ -528,43 +551,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                       </div>
                     ))}
                   </div>
-
-                  {/* My Identities */}
-                  {gitAuthors.length > 0 && (
-                    <div className="pt-3 border-t border-[hsl(var(--border))]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <User size={14} className="text-muted-foreground" />
-                        <span className="text-sm font-medium text-secondary-foreground">
-                          My Identities
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto h-6 text-xs"
-                          onClick={() => {
-                            setSelectedIdentities(new Set(myIdentities.map(i => `${i.name}|${i.email}`)));
-                            setIdentitySearch('');
-                            setIdentityDialogOpen(true);
-                          }}
-                        >
-                          Manage
-                        </Button>
-                      </div>
-                      {myIdentities.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {myIdentities.map((id, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs">
-                              {id.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">
-                          Click "Manage" to select your identities
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -584,7 +570,14 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                     Git Repositories ({gitRepos.length})
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">{stats.totalRepos} active</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); setActiveSheet('repos'); }}
+                  className="flex items-center gap-1 text-xs"
+                >
+                  View Details
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
@@ -631,7 +624,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-6 mb-8">
           <Card
             className={cn('cursor-pointer select-none transition-colors', stats.totalCommits > 0 && 'hover:border-primary/50')}
             onClick={() => { if (stats.totalCommits > 0) setActiveSheet('commits'); }}
@@ -656,7 +649,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                 </Select>
               </div>
               <div className="text-3xl font-bold mb-1 text-foreground">{stats.totalCommits}</div>
-              <div className="text-sm text-muted-foreground">Commits</div>
+              <div className="text-sm text-muted-foreground">Commits · {stats.totalRepos} Repos</div>
               {timeRange === 'custom' && (
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t">
                   <Popover>
@@ -702,23 +695,6 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
                   </Popover>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          <Card
-            className="cursor-pointer select-none hover:border-emerald-500/50 transition-colors"
-            onClick={() => setActiveSheet('repos')}
-            title="Click to view repository list"
-          >
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 rounded-lg bg-emerald-500/10">
-                  <FileText size={24} className="text-emerald-500" />
-                </div>
-                <span className="text-sm text-muted-foreground">{stats.totalRepos} active</span>
-              </div>
-              <div className="text-3xl font-bold mb-1 text-foreground">{gitRepos.length}</div>
-              <div className="text-sm text-muted-foreground">Git Repositories</div>
             </CardContent>
           </Card>
         </div>
@@ -905,8 +881,7 @@ export default function Dashboard({ onStartChat }: DashboardProps) {
               <Button
                 onClick={async () => {
                   const identities = gitAuthors.filter(a => selectedIdentities.has(`${a.name}|${a.email}`));
-                  await window.electronAPI.git.setMyIdentities(identities);
-                  setMyIdentities(identities);
+                  await setMyIdentities(identities);
                   setIdentityDialogOpen(false);
                   cachedStatsData = null;
                   cachedHeatmapData = null;
