@@ -28,6 +28,7 @@ import { migrateFromStore } from './database/migrate-from-store';
 import { GitCacheManager } from './services/GitCacheManager';
 import { scanBundles, type DetectedLibrary } from './techstack/bundleScanner';
 import { ChatService } from './chat/ChatService';
+import { MCPManager } from './mcp/MCPManager';
 import type { DebugLogEntry, DebugModelCall } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -42,6 +43,7 @@ let executorService: ExecutorService;
 let configManager: ConfigManager;
 let promptTemplateManager: PromptTemplateManager;
 const debugLogService = new DebugLogService();
+let mcpManager: MCPManager;
 
 // 开发环境检测：在 electron 开发模式下 NODE_ENV 可能未设置
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
@@ -187,6 +189,10 @@ async function initializeServices(): Promise<void> {
   await agentManager.initialize();
 
   chatService = new ChatService(agentManager, skillManager, llmManager, toolExecutor, recordModelDebug);
+
+  // 初始化 MCP 管理器
+  mcpManager = new MCPManager();
+  await mcpManager.initialize();
 
   Logger.info('All services initialized successfully');
 }
@@ -790,6 +796,83 @@ function setupIPCHandlers(): void {
     return analyzeProjectDir(dirPath);
   });
 
+  // MCP Server 相关
+  ipcMain.handle(IPCChannels.MCP_SERVER_LIST, async () => {
+    return mcpManager.listServers();
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_GET, async (_, serverId: string) => {
+    return mcpManager.getServer(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_CREATE, async (_, config: any) => {
+    return mcpManager.createServer(config);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_UPDATE, async (_, serverId: string, updates: any) => {
+    return mcpManager.updateServer(serverId, updates);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_DELETE, async (_, serverId: string) => {
+    return mcpManager.deleteServer(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_CONNECT, async (_, serverId: string) => {
+    return mcpManager.connectServer(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_DISCONNECT, async (_, serverId: string) => {
+    return mcpManager.disconnectServer(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_REFRESH_TOOLS, async (_, serverId: string) => {
+    return mcpManager.refreshTools(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_SERVER_CALL_TOOL, async (_, serverId: string, toolName: string, args: any) => {
+    return mcpManager.callTool(serverId, toolName, args);
+  });
+
+  // MCP server status events (broadcast to all windows)
+  mcpManager.on('server-status', (data) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send(IPCChannels.MCP_SERVER_STATUS_EVENT, data);
+      }
+    }
+  });
+
+  mcpManager.on('server-tools', (data) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send(IPCChannels.MCP_SERVER_TOOLS_EVENT, data);
+      }
+    }
+  });
+
+  // MCP Debug 相关
+  ipcMain.handle(IPCChannels.MCP_DEBUG_LOGS, async (_, serverId?: string) => {
+    return mcpManager.getProtocolLogs(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_DEBUG_CLEAR, async (_, serverId?: string) => {
+    return mcpManager.clearProtocolLogs(serverId);
+  });
+
+  ipcMain.handle(IPCChannels.MCP_DEBUG_EXPORT, async (_, serverId?: string) => {
+    const logs = mcpManager.getProtocolLogs(serverId, 10000);
+    return JSON.stringify(logs, null, 2);
+  });
+
+  // MCP protocol log events (broadcast to all windows)
+  mcpManager.on('protocol-log', (entry) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send(IPCChannels.MCP_DEBUG_LOG_EVENT, entry);
+      }
+    }
+  });
+
   Logger.info('IPC handlers registered');
 }
 
@@ -1331,7 +1414,8 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  if (mcpManager) await mcpManager.shutdown();
   closeDatabase();
   if (process.platform !== 'darwin') {
     app.quit();
