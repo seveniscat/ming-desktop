@@ -1,4 +1,5 @@
 import { getDatabase } from './connection';
+import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 
 export function runMigrations(): void {
   const db = getDatabase();
@@ -427,5 +428,28 @@ export function runMigrations(): void {
       CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
     `);
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration15Name);
+  }
+
+  // Migration: seed daily/weekly report prompts into prompt_templates
+  const migration16Name = 'seed-report-prompt-templates';
+  const applied16 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration16Name);
+  if (!applied16) {
+    const insertPrompt = db.prepare(`
+      INSERT OR IGNORE INTO prompt_templates (id, name, type, trigger, description, content, variables, category, tags, enabled)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `);
+    insertPrompt.run(
+      'prompt-daily-report', '日报生成器', 'task', 'daily',
+      '根据 Git 提交记录生成工作日报',
+      DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
+      '[]', 'analysis', JSON.stringify(['日报', 'report']),
+    );
+    insertPrompt.run(
+      'prompt-weekly-report', '周报生成器', 'task', 'weekly',
+      '根据本周 Git 提交记录生成工作周报',
+      DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT,
+      '[]', 'analysis', JSON.stringify(['周报', 'report']),
+    );
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration16Name);
   }
 }
