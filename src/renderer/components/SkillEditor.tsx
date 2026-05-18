@@ -19,6 +19,7 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
   const [content, setContent] = useState(skill.prompt);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [savedOnce, setSavedOnce] = useState(false);
   const vditorRef = useRef<Vditor | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +93,7 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
         prompt: content.trim(),
       });
       setDirty(false);
+      setSavedOnce(true);
       onSaved();
     } catch (error) {
       console.error('Failed to save skill:', error);
@@ -117,7 +119,10 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button variant="ghost" size="icon" onClick={() => {
+            if (dirty && !confirm('有未保存的更改，确定要离开吗？')) return;
+            onBack();
+          }}>
             <ArrowLeft size={18} />
           </Button>
           <div className="flex items-center gap-2">
@@ -133,7 +138,7 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!dirty && (
+          {!dirty && savedOnce && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Check size={12} /> 已保存
             </span>

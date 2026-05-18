@@ -135,19 +135,17 @@ export default function SkillManager() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className={`h-full ${editingSkill ? '' : 'overflow-y-auto p-8'}`}>
       {editingSkill ? (
-        <div className="h-full">
-          <SkillEditor
-            skill={editingSkill}
-            onBack={() => setEditingSkill(null)}
-            onSaved={async () => {
-              const freshSkills = await loadData();
-              const updated = freshSkills.find(s => s.id === editingSkill.id);
-              if (updated) setEditingSkill(updated);
-            }}
-          />
-        </div>
+        <SkillEditor
+          skill={editingSkill}
+          onBack={() => setEditingSkill(null)}
+          onSaved={async () => {
+            const freshSkills = await loadData();
+            const updated = freshSkills.find(s => s.id === editingSkill.id);
+            if (updated) setEditingSkill(updated);
+          }}
+        />
       ) : (
       <>
         <div className="max-w-5xl mx-auto">
