@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { exec } from 'child_process';
@@ -435,6 +435,11 @@ function setupIPCHandlers(): void {
   ipcMain.handle(IPCChannels.DIALOG_SHOW_OPEN_DIALOG, async (_, options: Electron.OpenDialogOptions) => {
     if (!mainWindow) return { canceled: true, filePaths: [] };
     return dialog.showOpenDialog(mainWindow, options);
+  });
+
+  // Shell 相关
+  ipcMain.handle(IPCChannels.SHELL_OPEN_EXTERNAL, async (_, url: string) => {
+    await shell.openExternal(url);
   });
 
   // Git 仓库扫描

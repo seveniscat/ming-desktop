@@ -5,6 +5,7 @@ import { ServerList } from '../components/mcp/ServerList';
 import { ServerConfigForm } from '../components/mcp/ServerConfigForm';
 import { ServerTools } from '../components/mcp/ServerTools';
 import { ServerToolTest } from '../components/mcp/ServerToolTest';
+import { McpTemplate } from '../components/mcp/McpTemplates';
 
 const api = window.electronAPI?.mcpServers;
 
@@ -258,6 +259,26 @@ export default function McpServersPage() {
     return api.callTool(selectedServerId, toolName, args);
   };
 
+  const handleImportTemplate = async (template: McpTemplate) => {
+    if (!api) return;
+    try {
+      const id = await api.create({
+        name: template.name,
+        transportType: template.transport_type,
+        command: template.command || null,
+        args: template.args,
+        env: template.env,
+        url: template.url || null,
+        enabled: false,
+      });
+      await loadServers();
+      setSelectedServerId(id);
+    } catch (error) {
+      console.error('Failed to import template:', error);
+      alert(`Failed to import: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   // -- Resize handle --
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -303,6 +324,7 @@ export default function McpServersPage() {
           onSelect={handleSelect}
           onAdd={handleAdd}
           onDelete={handleDelete}
+          onImportTemplate={handleImportTemplate}
         />
       </div>
 

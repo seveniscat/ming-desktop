@@ -4,6 +4,8 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { McpTemplates, McpTemplate } from './McpTemplates';
+import { DiscoverLinks } from './DiscoverLinks';
 
 interface ServerInfo {
   id: string;
@@ -21,6 +23,7 @@ interface ServerListProps {
   onSelect: (id: string) => void;
   onAdd: () => void;
   onDelete: (id: string) => void;
+  onImportTemplate: (template: McpTemplate) => void;
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -44,6 +47,7 @@ export function ServerList({
   onSelect,
   onAdd,
   onDelete,
+  onImportTemplate,
 }: ServerListProps) {
   const filtered = servers.filter((s) =>
     !search || s.name.toLowerCase().includes(search.toLowerCase())
@@ -69,6 +73,11 @@ export function ServerList({
           />
         </div>
       </div>
+
+      <McpTemplates
+        onImport={onImportTemplate}
+        existingServerNames={servers.map((s) => s.name)}
+      />
 
       <ScrollArea className="flex-1">
         <div className="px-2 pb-2 space-y-0.5">
@@ -114,6 +123,8 @@ export function ServerList({
           )}
         </div>
       </ScrollArea>
+
+      <DiscoverLinks />
     </div>
   );
 }

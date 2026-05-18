@@ -131,6 +131,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke(IPCChannels.DIALOG_SHOW_OPEN_DIALOG, options),
   },
 
+  // Shell API
+  shell: {
+    openExternal: (url: string) =>
+      ipcRenderer.invoke(IPCChannels.SHELL_OPEN_EXTERNAL, url),
+  },
+
   // Git API
   git: {
     scanRepos: () => ipcRenderer.invoke(IPCChannels.GIT_SCAN_REPOS),
@@ -277,6 +283,9 @@ export interface ElectronAPI {
   };
   dialog: {
     showOpenDialog: (options: Electron.OpenDialogOptions) => Promise<Electron.OpenDialogReturnValue>;
+  };
+  shell: {
+    openExternal: (url: string) => Promise<void>;
   };
   debug: {
     openPanel: () => Promise<void>;

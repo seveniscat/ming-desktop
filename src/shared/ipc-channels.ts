@@ -53,6 +53,9 @@ export enum IPCChannels {
   // 对话框相关
   DIALOG_SHOW_OPEN_DIALOG = 'dialog:show-open-dialog',
 
+  // Shell 相关
+  SHELL_OPEN_EXTERNAL = 'shell:open-external',
+
   // Git 相关
   GIT_SCAN_REPOS = 'git:scan-repos',
   GIT_GET_USER = 'git:get-user',

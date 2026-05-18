@@ -64,6 +64,9 @@ interface Window {
     dialog: {
       showOpenDialog: (options: any) => Promise<any>;
     };
+    shell: {
+      openExternal: (url: string) => Promise<void>;
+    };
     git: {
       scanRepos: () => Promise<{ name: string; path: string }[]>;
       getUser: () => Promise<{ name: string; email: string }>;
