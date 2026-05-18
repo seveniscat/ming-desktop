@@ -37,7 +37,7 @@ export default function SkillManager() {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (): Promise<Skill[]> => {
     try {
       const [skillList, agentList] = await Promise.all([
         window.electronAPI.skills.list(),
@@ -45,8 +45,10 @@ export default function SkillManager() {
       ]);
       setSkills(skillList || []);
       setAgents(agentList || []);
+      return skillList || [];
     } catch (error) {
       console.error('Failed to load skills:', error);
+      return [];
     }
   };
 
@@ -140,8 +142,8 @@ export default function SkillManager() {
             skill={editingSkill}
             onBack={() => setEditingSkill(null)}
             onSaved={async () => {
-              await loadData();
-              const updated = skills.find(s => s.id === editingSkill.id);
+              const freshSkills = await loadData();
+              const updated = freshSkills.find(s => s.id === editingSkill.id);
               if (updated) setEditingSkill(updated);
             }}
           />

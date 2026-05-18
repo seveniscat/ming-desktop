@@ -18,7 +18,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
   const [description, setDescription] = useState(skill.description);
   const [content, setContent] = useState(skill.prompt);
   const [saving, setSaving] = useState(false);
-  const [_lastSaved, setLastSaved] = useState(skill.updatedAt);
   const [dirty, setDirty] = useState(false);
   const vditorRef = useRef<Vditor | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,6 +58,18 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reactively sync Vditor theme with app dark/light mode
+  useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => {
+      const isDark = el.classList.contains('dark');
+      const theme = isDark ? 'dark' : 'classic';
+      vditorRef.current?.setTheme(theme);
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   // Sync content from parent if skill changes
   useEffect(() => {
     if (vditorRef.current && skill.prompt !== content) {
@@ -67,7 +78,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     }
     setName(skill.name);
     setDescription(skill.description);
-    setLastSaved(skill.updatedAt);
     setDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skill.id]);
@@ -82,7 +92,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
         prompt: content.trim(),
       });
       setDirty(false);
-      setLastSaved(new Date().toISOString());
       onSaved();
     } catch (error) {
       console.error('Failed to save skill:', error);
