@@ -9,6 +9,7 @@ import ChatMessages from './ChatMessages';
 import ChatInput from './ChatInput';
 import AgentStatusBar from './AgentStatusBar';
 import VariableFillDialog from './VariableFillDialog';
+import SkillParameterDialog from './SkillParameterDialog';
 import type { LLMProvider, Conversation } from './types';
 import type { PromptTemplate } from '../../../shared/types';
 
@@ -101,6 +102,9 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     pendingVariablePrompt,
     applyVariableValues,
     cancelVariableFill,
+    pendingParameterSkill,
+    applySkillParameters,
+    cancelSkillParameters,
     skills: availableSkills,
   } = useChatInput({ promptTemplates, isLoading, onActivateSkill: handleActivateSkill });
 
@@ -333,6 +337,14 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
         variables={pendingVariablePrompt ? extractVariables(pendingVariablePrompt.content) : []}
         onConfirm={applyVariableValues}
         onCancel={cancelVariableFill}
+      />
+
+      <SkillParameterDialog
+        open={!!pendingParameterSkill}
+        skillName={pendingParameterSkill?.skillName || ''}
+        parameters={pendingParameterSkill?.parameters || []}
+        onConfirm={applySkillParameters}
+        onCancel={cancelSkillParameters}
       />
     </div>
   );

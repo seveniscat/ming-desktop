@@ -22,6 +22,13 @@ export interface AgentConfig {
   skills?: string[];
 }
 
+export interface SkillParameter {
+  name: string;
+  label: string;
+  type: 'select';
+  options: { label: string; value: string }[];
+}
+
 export interface Skill {
   id: string;
   name: string;
@@ -29,6 +36,7 @@ export interface Skill {
   prompt: string;
   enabled: boolean;
   autoMessage?: string;
+  parameters?: SkillParameter[];
   sourcePath?: string;
   sourceType?: string;
   createdAt: string;

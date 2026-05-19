@@ -1,10 +1,18 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { PromptSuggestion, PromptTemplate } from '../types';
+import type { SkillParameter } from '../../../../shared/types';
 
 function extractVariables(content: string): string[] {
   const matches = content.match(/\{(\w+)\}/g);
   if (!matches) return [];
   return [...new Set(matches.map((m) => m.slice(1, -1)))];
+}
+
+interface PendingParameterSkill {
+  skillId: string;
+  skillName: string;
+  parameters: SkillParameter[];
+  autoMessage?: string;
 }
 
 export function useChatInput({
@@ -20,6 +28,7 @@ export function useChatInput({
   const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
   const [skills, setSkills] = useState<any[]>([]);
   const [pendingVariablePrompt, setPendingVariablePrompt] = useState<PromptSuggestion | null>(null);
+  const [pendingParameterSkill, setPendingParameterSkill] = useState<PendingParameterSkill | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Load skills once
@@ -75,7 +84,16 @@ export function useChatInput({
     if (suggestion.type === 'skill') {
       const skillId = suggestion.id.replace('skill-', '');
       const skill = skills.find((s: any) => s.id === skillId);
-      onActivateSkill?.(skillId, skill?.autoMessage);
+      if (skill?.parameters?.length > 0) {
+        setPendingParameterSkill({
+          skillId,
+          skillName: skill.name,
+          parameters: skill.parameters,
+          autoMessage: skill.autoMessage,
+        });
+      } else {
+        onActivateSkill?.(skillId, skill?.autoMessage);
+      }
       setInput('');
       requestAnimationFrame(() => inputRef.current?.focus());
       setSelectedPromptIndex(0);
@@ -90,7 +108,7 @@ export function useChatInput({
       requestAnimationFrame(() => inputRef.current?.focus());
     }
     setSelectedPromptIndex(0);
-  }, [onActivateSkill]);
+  }, [onActivateSkill, skills]);
 
   const applyVariableValues = useCallback((values: Record<string, string>) => {
     if (!pendingVariablePrompt) return;
@@ -107,6 +125,20 @@ export function useChatInput({
     setPendingVariablePrompt(null);
   }, []);
 
+  const applySkillParameters = useCallback((values: Record<string, string>) => {
+    if (!pendingParameterSkill) return;
+    let message = pendingParameterSkill.autoMessage || '';
+    for (const [key, value] of Object.entries(values)) {
+      message = message.split(`{${key}}`).join(value);
+    }
+    onActivateSkill?.(pendingParameterSkill.skillId, message || undefined);
+    setPendingParameterSkill(null);
+  }, [pendingParameterSkill, onActivateSkill]);
+
+  const cancelSkillParameters = useCallback(() => {
+    setPendingParameterSkill(null);
+  }, []);
+
   return {
     input,
     setInput,
@@ -120,6 +152,9 @@ export function useChatInput({
     pendingVariablePrompt,
     applyVariableValues,
     cancelVariableFill,
+    pendingParameterSkill,
+    applySkillParameters,
+    cancelSkillParameters,
     skills,
   };
 }

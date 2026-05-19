@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { Skill, SkillConfig, SkillSyncResult } from '../../shared/types';
+import { Skill, SkillConfig, SkillParameter, SkillSyncResult } from '../../shared/types';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { getDatabase } from '../database/connection';
@@ -28,6 +28,7 @@ export class SkillManager extends EventEmitter {
         description: row.description || '',
         prompt: row.prompt || '',
         autoMessage: row.auto_message || undefined,
+        parameters: row.parameters ? JSON.parse(row.parameters) : undefined,
         enabled: !!row.enabled,
         sourcePath: row.source_path || undefined,
         sourceType: row.source_type || undefined,
@@ -107,7 +108,7 @@ export class SkillManager extends EventEmitter {
     const db = getDatabase();
     db.prepare(`
       UPDATE skills
-      SET name = ?, description = ?, prompt = ?, enabled = ?, source_path = ?, source_type = ?, updated_at = ?
+      SET name = ?, description = ?, prompt = ?, enabled = ?, source_path = ?, source_type = ?, parameters = ?, updated_at = ?
       WHERE id = ?
     `).run(
       updated.name,
@@ -116,6 +117,7 @@ export class SkillManager extends EventEmitter {
       updated.enabled ? 1 : 0,
       updated.sourcePath || null,
       updated.sourceType || null,
+      updated.parameters ? JSON.stringify(updated.parameters) : null,
       updated.updatedAt,
       skillId
     );
@@ -328,13 +330,24 @@ export class SkillManager extends EventEmitter {
   }
 
   private ensureBuiltInSkills(): void {
-    const builtInSkills: Array<{ id: string; name: string; description: string; prompt: string; autoMessage?: string }> = [
+    const builtInSkills: Array<{ id: string; name: string; description: string; prompt: string; autoMessage?: string; parameters?: SkillParameter[] }> = [
       {
         id: 'builtin-daily-reporter',
         name: '日报生成器',
         description: '根据 Git 提交记录生成工作日报',
         prompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
-        autoMessage: '生成今天的工作日报',
+        autoMessage: '生成{timeRange}的工作日报',
+        parameters: [{
+          name: 'timeRange',
+          label: '日期范围',
+          type: 'select',
+          options: [
+            { label: '今天', value: '今天' },
+            { label: '昨天', value: '昨天' },
+            { label: '前天', value: '前天' },
+            { label: '本周', value: '本周' },
+          ],
+        }],
       },
       {
         id: 'builtin-weekly-reporter',
@@ -347,14 +360,24 @@ export class SkillManager extends EventEmitter {
 
     for (const def of builtInSkills) {
       if (this.skills.has(def.id)) {
-        // Only sync autoMessage, never overwrite user-edited prompt
+        // Only sync autoMessage and parameters, never overwrite user-edited prompt
         const existing = this.skills.get(def.id)!;
+        let needsUpdate = false;
         if (existing.autoMessage !== def.autoMessage) {
           existing.autoMessage = def.autoMessage;
+          needsUpdate = true;
+        }
+        const paramsJson = def.parameters ? JSON.stringify(def.parameters) : null;
+        const existingParamsJson = existing.parameters ? JSON.stringify(existing.parameters) : null;
+        if (existingParamsJson !== paramsJson) {
+          existing.parameters = def.parameters;
+          needsUpdate = true;
+        }
+        if (needsUpdate) {
           existing.updatedAt = new Date().toISOString();
           const db = getDatabase();
-          db.prepare('UPDATE skills SET auto_message = ?, updated_at = ? WHERE id = ?')
-            .run(def.autoMessage || null, existing.updatedAt, def.id);
+          db.prepare('UPDATE skills SET auto_message = ?, parameters = ?, updated_at = ? WHERE id = ?')
+            .run(def.autoMessage || null, paramsJson, existing.updatedAt, def.id);
           Logger.info(`Updated built-in skill metadata: ${def.name}`);
         }
         continue;
@@ -366,6 +389,7 @@ export class SkillManager extends EventEmitter {
         description: def.description,
         prompt: def.prompt,
         autoMessage: def.autoMessage,
+        parameters: def.parameters,
         enabled: true,
         sourcePath: undefined,
         sourceType: 'builtin',
@@ -376,11 +400,12 @@ export class SkillManager extends EventEmitter {
       this.skills.set(skill.id, skill);
       const db = getDatabase();
       db.prepare(`
-        INSERT INTO skills (id, name, description, prompt, enabled, source_path, source_type, auto_message, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO skills (id, name, description, prompt, enabled, source_path, source_type, auto_message, parameters, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         skill.id, skill.name, skill.description, skill.prompt,
         1, null, skill.sourceType, skill.autoMessage || null,
+        skill.parameters ? JSON.stringify(skill.parameters) : null,
         skill.createdAt, skill.updatedAt,
       );
       Logger.info(`Created built-in skill: ${def.name}`);

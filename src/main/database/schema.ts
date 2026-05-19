@@ -439,4 +439,16 @@ export function runMigrations(): void {
     db.prepare("DELETE FROM agents WHERE name = 'Daily Reporter' AND tools LIKE '%daily-report%'").run();
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration16Name);
   }
+
+  // Migration: add parameters column to skills
+  const migration17Name = 'add-skill-parameters';
+  const applied17 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration17Name);
+  if (!applied17) {
+    try {
+      db.exec('ALTER TABLE skills ADD COLUMN parameters TEXT DEFAULT NULL');
+    } catch {
+      // Column may already exist on fresh installs
+    }
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration17Name);
+  }
 }
