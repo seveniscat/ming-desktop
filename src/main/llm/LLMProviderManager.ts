@@ -2,8 +2,23 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMProvider, LLMProviderConfig, ChatMessage } from '../../shared/types';
+import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ToolCall } from '../../shared/types';
 import { Logger } from '../utils/Logger';
+
+export interface StreamToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface StreamWithToolsResult {
+  fullContent: string;
+  toolCalls: StreamToolCall[];
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+}
 import { ConfigManager } from '../services/ConfigManager';
 import { getDatabase } from '../database/connection';
 
@@ -30,6 +45,7 @@ export class LLMProviderManager extends EventEmitter {
         apiKey: row.api_key,
         baseURL: row.base_url,
         models: JSON.parse(row.models || '[]'),
+        enabledModels: JSON.parse(row.enabled_models || '[]'),
         enabled: !!row.enabled
       };
       this.providers.set(provider.id, provider);
@@ -85,13 +101,15 @@ export class LLMProviderManager extends EventEmitter {
   }
 
   async addProvider(config: LLMProviderConfig): Promise<LLMProvider> {
+    const defaultModels = config.models?.length
+      ? config.models
+      : this.getDefaultModels(config.type);
     const provider: LLMProvider = {
       id: `provider-${randomUUID().slice(0, 8)}`,
       ...config,
       enabled: true,
-      models: config.models?.length
-        ? config.models
-        : this.getDefaultModels(config.type)
+      models: defaultModels,
+      enabledModels: defaultModels, // all default models enabled by default
     };
 
     this.providers.set(provider.id, provider);
@@ -103,9 +121,9 @@ export class LLMProviderManager extends EventEmitter {
     // Save to SQLite
     const db = getDatabase();
     db.prepare(`
-      INSERT INTO llm_providers (id, name, type, api_key, base_url, models, enabled)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(provider.id, provider.name, provider.type, provider.apiKey || null, provider.baseURL || null, JSON.stringify(provider.models), 1);
+      INSERT INTO llm_providers (id, name, type, api_key, base_url, models, enabled, enabled_models)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(provider.id, provider.name, provider.type, provider.apiKey || null, provider.baseURL || null, JSON.stringify(provider.models), 1, JSON.stringify(provider.enabledModels));
 
     this.emit('provider-added', provider);
     Logger.info(`LLM provider added: ${provider.name}`);
@@ -155,16 +173,16 @@ export class LLMProviderManager extends EventEmitter {
       const db = getDatabase();
       db.prepare(`
         UPDATE llm_providers
-        SET name = ?, type = ?, api_key = ?, base_url = ?, models = ?, enabled = ?, updated_at = datetime('now')
+        SET name = ?, type = ?, api_key = ?, base_url = ?, models = ?, enabled = ?, enabled_models = ?, updated_at = datetime('now')
         WHERE id = ?
-      `).run(updated.name, updated.type, updated.apiKey || null, updated.baseURL || null, JSON.stringify(updated.models), updated.enabled ? 1 : 0, providerId);
+      `).run(updated.name, updated.type, updated.apiKey || null, updated.baseURL || null, JSON.stringify(updated.models), updated.enabled ? 1 : 0, JSON.stringify(updated.enabledModels), providerId);
 
       this.emit('provider-updated', updated);
       Logger.info(`LLM provider updated: ${updated.name}`);
     }
   }
 
-  async chat(providerId: string, messages: ChatMessage[]): Promise<string> {
+  async chat(providerId: string, messages: ChatMessage[], model?: string, tools?: ToolDefinition[]): Promise<string | { toolCalls: ToolCall[] }> {
     const provider = this.providers.get(providerId);
     if (!provider) {
       throw new Error(`Provider not found: ${providerId}`);
@@ -177,9 +195,9 @@ export class LLMProviderManager extends EventEmitter {
 
     try {
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
-        return await this.chatWithOpenAI(client as OpenAI, provider, messages);
+        return await this.chatWithOpenAI(client as OpenAI, provider, messages, model, tools);
       } else if (provider.type === 'anthropic') {
-        return await this.chatWithAnthropic(client as Anthropic, provider, messages);
+        return await this.chatWithAnthropic(client as Anthropic, provider, messages, model, tools);
       } else {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
@@ -189,31 +207,454 @@ export class LLMProviderManager extends EventEmitter {
     }
   }
 
+  async chatStream(
+    providerId: string,
+    messages: ChatMessage[],
+    model: string | undefined,
+    onChunk: (text: string) => void,
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
+    const provider = this.providers.get(providerId);
+    if (!provider) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+
+    const client = this.clients.get(providerId);
+    if (!client) {
+      throw new Error(`Provider client not initialized: ${providerId}`);
+    }
+
+    const resolvedModel = model || provider.models[0] || 'gpt-4';
+
+    onDebug({
+      type: 'request',
+      timestamp: Date.now(),
+      data: {
+        provider: provider.name,
+        model: resolvedModel,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+      },
+    });
+
+    const startTime = Date.now();
+
+    try {
+      let result: { fullContent: string; usage?: any };
+
+      if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
+        result = await this.chatStreamOpenAI(client as OpenAI, provider, messages, resolvedModel, onChunk, onDebug, signal);
+      } else if (provider.type === 'anthropic') {
+        result = await this.chatStreamAnthropic(client as Anthropic, provider, messages, resolvedModel, onChunk, onDebug, signal);
+      } else {
+        throw new Error(`Unsupported provider type: ${provider.type}`);
+      }
+
+      onDebug({
+        type: 'response',
+        timestamp: Date.now(),
+        data: {
+          provider: provider.name,
+          model: resolvedModel,
+          content: result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : ''),
+          usage: result.usage,
+          duration: Date.now() - startTime,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      onDebug({
+        type: 'error',
+        timestamp: Date.now(),
+        data: {
+          provider: provider.name,
+          model: resolvedModel,
+          error: errorMsg,
+          duration: Date.now() - startTime,
+        },
+      });
+      throw error;
+    }
+  }
+
+  async chatStreamWithTools(
+    providerId: string,
+    messages: ChatMessage[],
+    model: string | undefined,
+    tools: ToolDefinition[] | undefined,
+    onChunk: (text: string) => void,
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<StreamWithToolsResult> {
+    const provider = this.providers.get(providerId);
+    if (!provider) throw new Error(`Provider not found: ${providerId}`);
+
+    const client = this.clients.get(providerId);
+    if (!client) throw new Error(`Provider client not initialized: ${providerId}`);
+
+    const resolvedModel = model || provider.models[0] || 'gpt-4';
+
+    onDebug({
+      type: 'request',
+      timestamp: Date.now(),
+      data: {
+        provider: provider.name,
+        model: resolvedModel,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        tools: tools?.map(t => t.function.name),
+      },
+    });
+
+    const startTime = Date.now();
+
+    try {
+      let result: StreamWithToolsResult;
+
+      if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
+        result = await this.chatStreamWithToolsOpenAI(client as OpenAI, provider, messages, resolvedModel, tools, onChunk, onDebug, signal);
+      } else if (provider.type === 'anthropic') {
+        result = await this.chatStreamWithToolsAnthropic(client as Anthropic, provider, messages, resolvedModel, tools, onChunk, onDebug, signal);
+      } else {
+        throw new Error(`Unsupported provider type: ${provider.type}`);
+      }
+
+      onDebug({
+        type: 'response',
+        timestamp: Date.now(),
+        data: {
+          provider: provider.name,
+          model: resolvedModel,
+          content: result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : ''),
+          tools: result.toolCalls.map(tc => tc.function.name),
+          usage: result.usage,
+          duration: Date.now() - startTime,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      onDebug({
+        type: 'error',
+        timestamp: Date.now(),
+        data: { provider: provider.name, model: resolvedModel, error: errorMsg, duration: Date.now() - startTime },
+      });
+      throw error;
+    }
+  }
+
+  private async chatStreamWithToolsOpenAI(
+    client: OpenAI,
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    tools: ToolDefinition[] | undefined,
+    onChunk: (text: string) => void,
+    _onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<StreamWithToolsResult> {
+    const createOptions: any = {
+      model,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      temperature: 0.7,
+      max_tokens: 2048,
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools;
+    }
+
+    const stream = await client.chat.completions.create(createOptions, { signal });
+
+    let fullContent = '';
+    let usage: any = undefined;
+    const toolCallAccumulators: Map<number, { id: string; name: string; arguments: string }> = new Map();
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta;
+
+      const reasoning = (delta as any)?.reasoning_content;
+      if (reasoning) {
+        fullContent += reasoning;
+        onChunk(reasoning);
+      }
+
+      if (delta?.content) {
+        fullContent += delta.content;
+        onChunk(delta.content);
+      }
+
+      if ((delta as any)?.tool_calls) {
+        for (const tc of (delta as any).tool_calls) {
+          const idx = tc.index;
+          if (!toolCallAccumulators.has(idx)) {
+            toolCallAccumulators.set(idx, { id: tc.id || '', name: tc.function?.name || '', arguments: '' });
+          }
+          const acc = toolCallAccumulators.get(idx)!;
+          if (tc.id) acc.id = tc.id;
+          if (tc.function?.name) acc.name = tc.function.name;
+          if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+        }
+      }
+
+      if ((chunk as any).usage) {
+        usage = {
+          promptTokens: (chunk as any).usage.prompt_tokens,
+          completionTokens: (chunk as any).usage.completion_tokens,
+          totalTokens: (chunk as any).usage.total_tokens,
+        };
+      }
+    }
+
+    const toolCalls: StreamToolCall[] = Array.from(toolCallAccumulators.values())
+      .filter(acc => acc.id && acc.name)
+      .map(acc => ({
+        id: acc.id,
+        type: 'function' as const,
+        function: { name: acc.name, arguments: acc.arguments },
+      }));
+
+    return { fullContent, toolCalls, usage };
+  }
+
+  private async chatStreamWithToolsAnthropic(
+    client: Anthropic,
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    tools: ToolDefinition[] | undefined,
+    onChunk: (text: string) => void,
+    _onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<StreamWithToolsResult> {
+    const createOptions: any = {
+      model,
+      max_tokens: 2048,
+      messages: messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      system: messages.find(m => m.role === 'system')?.content || '',
+    };
+
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+    }
+
+    const stream = client.messages.stream(createOptions, { signal });
+
+    let fullContent = '';
+
+    stream.on('text', (text: string) => {
+      fullContent += text;
+      onChunk(text);
+    });
+
+    const finalMessage = await stream.finalMessage();
+
+    const toolCalls: StreamToolCall[] = finalMessage.content
+      .filter((block: any) => block.type === 'tool_use')
+      .map((block: any) => ({
+        id: block.id,
+        type: 'function' as const,
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      }));
+
+    const usage = finalMessage.usage ? {
+      promptTokens: finalMessage.usage.input_tokens,
+      completionTokens: finalMessage.usage.output_tokens,
+      totalTokens: (finalMessage.usage.input_tokens || 0) + (finalMessage.usage.output_tokens || 0),
+    } : undefined;
+
+    return { fullContent, toolCalls, usage };
+  }
+
+  private async chatStreamOpenAI(
+    client: OpenAI,
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    onChunk: (text: string) => void,
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<{ fullContent: string; usage?: any }> {
+    const stream = await client.chat.completions.create({
+      model,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      temperature: 0.7,
+      max_tokens: 2048,
+      stream: true,
+    }, { signal });
+
+    let fullContent = '';
+    let reasoningContent = '';
+    let usage: any = undefined;
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta;
+
+      // Handle reasoning_content (DeepSeek/Qwen)
+      const reasoning = (delta as any)?.reasoning_content;
+      if (reasoning) {
+        reasoningContent += reasoning;
+      }
+
+      if (delta?.content) {
+        fullContent += delta.content;
+        onChunk(delta.content);
+      }
+
+      // Debug: log each chunk
+      onDebug({
+        type: 'chunk',
+        timestamp: Date.now(),
+        data: {
+          content: delta?.content || '',
+          provider: provider.name,
+          model,
+        },
+      });
+
+      // Capture usage from final chunk (some providers include it)
+      if ((chunk as any).usage) {
+        usage = {
+          promptTokens: (chunk as any).usage.prompt_tokens,
+          completionTokens: (chunk as any).usage.completion_tokens,
+          totalTokens: (chunk as any).usage.total_tokens,
+        };
+      }
+    }
+
+    // Prepend reasoning content if present
+    if (reasoningContent) {
+      const prefix = `<think>${reasoningContent}</think>\n`;
+      fullContent = prefix + fullContent;
+    }
+
+    return { fullContent, usage };
+  }
+
+  private async chatStreamAnthropic(
+    client: Anthropic,
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    onChunk: (text: string) => void,
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<{ fullContent: string; usage?: any }> {
+    const stream = client.messages.stream({
+      model,
+      max_tokens: 2048,
+      messages: messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      system: messages.find(m => m.role === 'system')?.content || '',
+    }, { signal });
+
+    let fullContent = '';
+    let thinkingContent = '';
+
+    stream.on('text', (text: string) => {
+      fullContent += text;
+      onChunk(text);
+      onDebug({
+        type: 'chunk',
+        timestamp: Date.now(),
+        data: { content: text, provider: provider.name, model },
+      });
+    });
+
+    // Handle thinking events (extended thinking)
+    stream.on('thinking', (thinking: string) => {
+      if (typeof thinking === 'string') {
+        thinkingContent += thinking;
+      }
+    });
+
+    const finalMessage = await stream.finalMessage();
+
+    // Extract usage
+    const usage = finalMessage.usage ? {
+      promptTokens: finalMessage.usage.input_tokens,
+      completionTokens: finalMessage.usage.output_tokens,
+      totalTokens: finalMessage.usage.input_tokens + finalMessage.usage.output_tokens,
+    } : undefined;
+
+    // Prepend thinking if present
+    if (thinkingContent) {
+      const prefix = `<think>${thinkingContent}</think>\n`;
+      fullContent = prefix + fullContent;
+    }
+
+    return { fullContent, usage };
+  }
+
   private async chatWithOpenAI(
     client: OpenAI,
     provider: LLMProvider,
-    messages: ChatMessage[]
-  ): Promise<string> {
-    const response = await client.chat.completions.create({
-      model: provider.models[0] || 'gpt-4',
+    messages: ChatMessage[],
+    model?: string,
+    tools?: ToolDefinition[]
+  ): Promise<string | { toolCalls: ToolCall[] }> {
+    const createOptions: any = {
+      model: model || provider.models[0] || 'gpt-4',
       messages: messages.map(m => ({
         role: m.role,
         content: m.content
       })),
       temperature: 0.7,
       max_tokens: 2048
-    });
+    };
 
-    return response.choices[0]?.message?.content || '';
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools;
+    }
+
+    const response = await client.chat.completions.create(createOptions);
+
+    const msg = response.choices[0]?.message;
+
+    // Handle tool_calls if present
+    if (msg?.tool_calls && msg.tool_calls.length > 0) {
+      const toolCalls: ToolCall[] = msg.tool_calls.map(tc => ({
+        id: tc.id,
+        type: 'function' as const,
+        function: {
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        },
+      }));
+      return { toolCalls };
+    }
+
+    const content = msg?.content || '';
+    // Some providers (DeepSeek, Qwen) return reasoning in a separate field
+    const reasoning = (msg as any)?.reasoning_content;
+    if (reasoning) {
+      return `<think>${reasoning}</think>\n${content}`;
+    }
+    return content;
   }
 
   private async chatWithAnthropic(
     client: Anthropic,
     provider: LLMProvider,
-    messages: ChatMessage[]
-  ): Promise<string> {
-    const response = await client.messages.create({
-      model: provider.models[0] || 'claude-3-opus-20240229',
+    messages: ChatMessage[],
+    model?: string,
+    tools?: ToolDefinition[]
+  ): Promise<string | { toolCalls: ToolCall[] }> {
+    const createOptions: any = {
+      model: model || provider.models[0] || 'claude-3-opus-20240229',
       max_tokens: 2048,
       messages: messages
         .filter(m => m.role !== 'system')
@@ -222,9 +663,41 @@ export class LLMProviderManager extends EventEmitter {
           content: m.content
         })),
       system: messages.find(m => m.role === 'system')?.content || ''
-    });
+    };
 
-    return response.content[0]?.type === 'text' ? response.content[0].text : '';
+    if (tools && tools.length > 0) {
+      createOptions.tools = tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+    }
+
+    const response = await client.messages.create(createOptions);
+
+    // Handle tool_use content blocks if present
+    const toolUseBlocks = response.content.filter((block: any) => block.type === 'tool_use');
+    if (toolUseBlocks.length > 0) {
+      const toolCalls: ToolCall[] = toolUseBlocks.map((block: any) => ({
+        id: block.id,
+        type: 'function' as const,
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      }));
+      return { toolCalls };
+    }
+
+    // Check for thinking blocks (Anthropic extended thinking)
+    const parts = response.content as Array<{ type: string; text?: string; thinking?: string }>;
+    const thinkingText = parts.filter(b => b.type === 'thinking').map(b => b.thinking || b.text || '').join('\n');
+    const textParts = parts.filter(b => b.type === 'text').map(b => b.text || '');
+    const mainText = textParts.join('\n');
+    if (thinkingText) {
+      return `<think>${thinkingText}</think>\n${mainText}`;
+    }
+    return mainText;
   }
 
   private getDefaultModels(type: LLMProvider['type']): string[] {
@@ -243,6 +716,44 @@ export class LLMProviderManager extends EventEmitter {
         return ['llama-2-7b', 'mistral-7b'];
       default:
         return ['gpt-4'];
+    }
+  }
+
+  async fetchModels(providerId: string): Promise<string[]> {
+    const provider = this.providers.get(providerId);
+    if (!provider) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+
+    const client = this.clients.get(providerId);
+    if (!client) {
+      throw new Error(`Provider client not initialized: ${providerId}`);
+    }
+
+    try {
+      if (provider.type === 'anthropic') {
+        // Anthropic has no public models endpoint; return defaults
+        return this.getDefaultModels('anthropic');
+      }
+
+      // OpenAI-compatible: call /models endpoint
+      const openaiClient = client as OpenAI;
+      const response = await openaiClient.models.list();
+      const modelIds = response.data
+        .map(m => m.id)
+        .sort();
+
+      // Update stored models
+      provider.models = modelIds;
+      const db = getDatabase();
+      db.prepare('UPDATE llm_providers SET models = ?, updated_at = datetime(\'now\') WHERE id = ?')
+        .run(JSON.stringify(modelIds), providerId);
+
+      Logger.info(`Fetched ${modelIds.length} models for provider ${provider.name}`);
+      return modelIds;
+    } catch (error) {
+      Logger.error(`Failed to fetch models for ${provider.name}:`, error);
+      throw error;
     }
   }
 }

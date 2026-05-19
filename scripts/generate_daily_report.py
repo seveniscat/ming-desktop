@@ -64,7 +64,7 @@ CONFIG = {
     "include_all_branches": True,
 
     # 按作者过滤（可选，只看自己的提交）
-    "filter_by_author": None,  # None = 不过滤，或设置你的Git用户名
+    "filter_by_authors": None,  # None = 不过滤，或设置 [Git用户名] 列表
 
     # 输出路径
     "output_dir": "~/daily-reports",
@@ -96,7 +96,15 @@ def find_git_repos(base_path, max_depth=3):
     return repos
 
 
-def has_commits_today(repo_path, since_date, until_date=None, include_all_branches=True, author=None):
+def _add_author_args(cmd, authors):
+    """Add --author flags for one or multiple authors (git OR-matches multiple --author)."""
+    if not authors:
+        return
+    for a in authors:
+        cmd.extend(["--author", a])
+
+
+def has_commits_today(repo_path, since_date, until_date=None, include_all_branches=True, authors=None):
     """快速检查仓库在指定时间范围内是否有提交"""
     try:
         cmd = [
@@ -111,8 +119,7 @@ def has_commits_today(repo_path, since_date, until_date=None, include_all_branch
         if until_date:
             cmd.append(f"--until={until_date}")
 
-        if author:
-            cmd.extend(["--author", author])
+        _add_author_args(cmd, authors)
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         lines = [l for l in result.stdout.strip().split('\n') if l.strip()]
@@ -122,7 +129,7 @@ def has_commits_today(repo_path, since_date, until_date=None, include_all_branch
         return False, 0
 
 
-def get_git_commits(repo_path, since_date, until_date=None, include_all_branches=True, author=None):
+def get_git_commits(repo_path, since_date, until_date=None, include_all_branches=True, authors=None):
     """获取指定时间范围内的Git提交记录（详细）"""
     try:
         cmd = [
@@ -139,8 +146,7 @@ def get_git_commits(repo_path, since_date, until_date=None, include_all_branches
         if include_all_branches:
             cmd.append("--all")
 
-        if author:
-            cmd.extend(["--author", author])
+        _add_author_args(cmd, authors)
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return result.stdout
@@ -319,7 +325,7 @@ def generate_report(config=None):
     start_time = time.time()
     active_repos = []
     include_all_branches = config.get("include_all_branches", True)
-    author_filter = config.get("filter_by_author")
+    author_filter = config.get("filter_by_authors")  # list of authors
 
     for repo_path in repo_paths:
         has_commits, count = has_commits_today(
@@ -327,7 +333,7 @@ def generate_report(config=None):
             since,
             until,
             include_all_branches=include_all_branches,
-            author=author_filter
+            authors=author_filter
         )
         if has_commits:
             repo_name = Path(repo_path).name
@@ -352,7 +358,7 @@ def generate_report(config=None):
             since,
             until,
             include_all_branches=include_all_branches,
-            author=author_filter
+            authors=author_filter
         )
 
         if git_output:
@@ -437,11 +443,17 @@ def _config_from_env():
     elif iab in ("1", "true", "yes"):
         cfg["include_all_branches"] = True
 
-    author = os.environ.get("FILTER_BY_AUTHOR", "").strip()
-    if author:
-        cfg["filter_by_author"] = author
-    elif "FILTER_BY_AUTHOR" in os.environ:
-        cfg["filter_by_author"] = None
+    # Multi-author support: FILTER_BY_AUTHORS takes priority (comma-separated),
+    # falls back to single FILTER_BY_AUTHOR for backwards compatibility.
+    authors_csv = os.environ.get("FILTER_BY_AUTHORS", "").strip()
+    if authors_csv:
+        cfg["filter_by_authors"] = [a.strip() for a in authors_csv.split(",") if a.strip()]
+    else:
+        author = os.environ.get("FILTER_BY_AUTHOR", "").strip()
+        if author:
+            cfg["filter_by_authors"] = [author]
+        elif "FILTER_BY_AUTHOR" in os.environ:
+            cfg["filter_by_authors"] = None
 
     tmpl = os.environ.get("DAILY_REPORT_TEMPLATE", "").strip()
     if tmpl:

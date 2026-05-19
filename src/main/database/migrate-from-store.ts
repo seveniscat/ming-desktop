@@ -39,18 +39,55 @@ export function migrateFromStore(configManager: ConfigManager): void {
     const agents = configManager.get('agents', []) as any[];
     if (Array.isArray(agents) && agents.length > 0) {
       const stmt = db.prepare(`
-        INSERT OR IGNORE INTO agents (id, name, description, model, system_prompt, tools, enabled, is_default, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        INSERT OR IGNORE INTO agents (id, name, description, model, system_prompt, tools, skills, enabled, is_default, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `);
       for (const a of agents) {
         if (a.id) {
-          stmt.run(a.id, a.name || '', a.description || '', a.model || 'gpt-4', a.systemPrompt || a.system_prompt || '', JSON.stringify(a.tools || []), a.enabled !== false ? 1 : 0, a.isDefault || a.is_default ? 1 : 0);
+          stmt.run(
+            a.id,
+            a.name || '',
+            a.description || '',
+            a.model || '',
+            a.systemPrompt || a.system_prompt || '',
+            JSON.stringify(a.tools || []),
+            JSON.stringify(a.skills || []),
+            a.enabled !== false ? 1 : 0,
+            a.isDefault || a.is_default ? 1 : 0
+          );
         }
       }
       Logger.info(`Migrated ${agents.length} agents`);
     }
   } catch (e) {
     Logger.error('Failed to migrate agents', e);
+  }
+
+  // Migrate skills
+  try {
+    const skills = configManager.get('skills', []) as any[];
+    if (Array.isArray(skills) && skills.length > 0) {
+      const stmt = db.prepare(`
+        INSERT OR IGNORE INTO skills (id, name, description, prompt, enabled, source_path, source_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+      for (const skill of skills) {
+        if (skill.id) {
+          stmt.run(
+            skill.id,
+            skill.name || '',
+            skill.description || '',
+            skill.prompt || '',
+            skill.enabled !== false ? 1 : 0,
+            skill.sourcePath || skill.source_path || null,
+            skill.sourceType || skill.source_type || null
+          );
+        }
+      }
+      Logger.info(`Migrated ${skills.length} skills`);
+    }
+  } catch (e) {
+    Logger.error('Failed to migrate skills', e);
   }
 
   // Mark migration as done

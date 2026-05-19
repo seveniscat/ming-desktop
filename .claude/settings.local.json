@@ -33,7 +33,8 @@
       "Bash(REPO_PATHS=\"/Users/bloks/bzdev/bkdev/mobiles\" TIME_RANGE=\"day_before_yesterday\" INCLUDE_ALL_BRANCHES=\"true\" python3 scripts/generate_daily_report.py)",
       "Bash(REPO_PATHS=\"/Users/bloks/bzdev/bkdev/backend,/Users/bloks/bzdev/bkdev/mobiles\" TIME_RANGE=\"today\" INCLUDE_ALL_BRANCHES=\"true\" python3 scripts/generate_daily_report.py)",
       "Bash(timeout 10 npx electron .)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(xxd /Users/bloks/bzdev/playground/ming-desktop/src/main/llm/LLMProviderManager.ts)"
     ]
   }
 }

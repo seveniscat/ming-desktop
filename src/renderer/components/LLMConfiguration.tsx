@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Key, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Key, Plus, Pencil, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
 import type { LLMProvider, LLMProviderConfig } from '../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectTrigger,
@@ -59,6 +60,8 @@ export default function LLMConfiguration() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyEdit);
   const [error, setError] = useState<string | null>(null);
+  const [fetchingModelsId, setFetchingModelsId] = useState<string | null>(null);
+  const [expandedModelsId, setExpandedModelsId] = useState<string | null>(null);
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -198,6 +201,35 @@ export default function LLMConfiguration() {
     }
   };
 
+  const handleFetchModels = async (p: LLMProvider) => {
+    setFetchingModelsId(p.id);
+    setError(null);
+    try {
+      await window.electronAPI.llm.fetchModels(p.id);
+      await loadProviders();
+      setExpandedModelsId(p.id);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to fetch models');
+    } finally {
+      setFetchingModelsId(null);
+    }
+  };
+
+  const handleToggleModel = async (p: LLMProvider, model: string) => {
+    const current = p.enabledModels || [];
+    const updated = current.includes(model)
+      ? current.filter(m => m !== model)
+      : [...current, model];
+    try {
+      await window.electronAPI.llm.updateProvider(p.id, { enabledModels: updated });
+      await loadProviders();
+    } catch (e) {
+      console.error(e);
+      setError('Failed to update model');
+    }
+  };
+
   return (
     <div>
       {error && (
@@ -271,10 +303,47 @@ export default function LLMConfiguration() {
                         )}
                       </div>
                       {p.models?.length > 0 && (
-                        <div className="text-xs text-muted-foreground mt-1">Models: {p.models.join(', ')}</div>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-xs text-muted-foreground mt-1 hover:text-foreground transition-colors"
+                          onClick={() => setExpandedModelsId(expandedModelsId === p.id ? null : p.id)}
+                        >
+                          <ChevronDown
+                            size={12}
+                            className={cn(expandedModelsId === p.id && 'rotate-180')}
+                          />
+                          {p.enabledModels?.length || 0} / {p.models.length} models enabled
+                        </button>
+                      )}
+                      {expandedModelsId === p.id && p.models?.length > 0 && (
+                        <div className="mt-2 space-y-1 pl-1">
+                          {p.models.map(model => {
+                            const isEnabled = (p.enabledModels || []).includes(model);
+                            return (
+                              <div key={model} className="flex items-center gap-2">
+                                <Switch
+                                  checked={isEnabled}
+                                  onCheckedChange={() => handleToggleModel(p, model)}
+                                  className="scale-75"
+                                />
+                                <span className="text-xs">{model}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleFetchModels(p)}
+                        disabled={!p.enabled || fetchingModelsId === p.id}
+                        title="Fetch models"
+                      >
+                        <RefreshCw size={16} className={cn(fetchingModelsId === p.id && 'animate-spin')} />
+                      </Button>
                       <Label htmlFor={`switch-${p.id}`} className="text-xs text-muted-foreground mr-1">Enabled</Label>
                       <Switch
                         id={`switch-${p.id}`}

@@ -2,7 +2,6 @@ import Store from 'electron-store';
 import { AppConfig } from '../../shared/types';
 import {
   DEFAULT_DAILY_REPORT_TEMPLATE,
-  DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT
 } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 
@@ -12,8 +11,8 @@ const DEFAULT_CONFIG: AppConfig = {
   autoUpdate: true,
   workPaths: [] as string[],
   dailyReportTemplate: DEFAULT_DAILY_REPORT_TEMPLATE,
-  dailyReporterSystemPrompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
   plugins: {},
+  skills: [],
   agents: [],
   llmProviders: []
 };

@@ -1,29 +1,3 @@
-// 插件相关类型
-export interface Plugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  author: string;
-  icon?: string;
-  category: string;
-  entry: string;
-  configSchema?: any;
-  enabled: boolean;
-}
-
-export interface PluginConfig {
-  pluginId: string;
-  config: Record<string, any>;
-}
-
-export interface PluginExecutionResult {
-  success: boolean;
-  data?: any;
-  error?: string;
-  logs?: string[];
-}
-
 // Agent 相关类型
 export interface Agent {
   id: string;
@@ -32,6 +6,9 @@ export interface Agent {
   model: string;
   systemPrompt: string;
   tools: string[];
+  skills: string[];
+  enabled?: boolean;
+  isDefault?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,12 +19,86 @@ export interface AgentConfig {
   model: string;
   systemPrompt: string;
   tools?: string[];
+  skills?: string[];
+}
+
+export interface SkillParameter {
+  name: string;
+  label: string;
+  type: 'select';
+  options: { label: string; value: string }[];
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  enabled: boolean;
+  autoMessage?: string;
+  parameters?: SkillParameter[];
+  sourcePath?: string;
+  sourceType?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillConfig {
+  name: string;
+  description?: string;
+  prompt: string;
+  enabled?: boolean;
+  sourcePath?: string;
+  sourceType?: string;
+}
+
+export interface SkillSyncResult {
+  total: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  skills: Skill[];
+}
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  type: 'system' | 'task';
+  trigger: string;
+  description: string;
+  content: string;
+  variables: string[];
+  category: string | null;
+  tags: string[];
+  enabled: boolean;
+  usage_count: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PromptTemplateConfig {
+  name: string;
+  type?: 'system' | 'task';
+  trigger?: string;
+  description?: string;
+  content: string;
+  category?: string;
+  tags?: string[];
+  enabled?: boolean;
 }
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   timestamp?: string;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  agentId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // LLM Provider 相关类型
@@ -58,6 +109,7 @@ export interface LLMProvider {
   apiKey?: string;
   baseURL?: string;
   models: string[];
+  enabledModels: string[];
   enabled: boolean;
 }
 
@@ -74,14 +126,14 @@ export interface AppConfig {
   theme: 'light' | 'dark' | 'auto';
   language: string;
   autoUpdate: boolean;
+  colorTheme?: string;
   defaultLLMProvider?: string;
   workPaths: string[];
   /** 日报 Markdown 模板，占位符：{date} {total_commits} {total_repos} {work_hours} {commit_details} {stats} {generated_at} */
   dailyReportTemplate?: string;
-  /** Daily Reporter Agent 的系统提示词 */
-  dailyReporterSystemPrompt?: string;
-  plugins: Record<string, PluginConfig>;
+  plugins?: Record<string, unknown>;
   agents: Agent[];
+  skills: Skill[];
   llmProviders: LLMProvider[];
 }
 
@@ -112,4 +164,134 @@ export interface DailyReport {
   details: string;
   stats: string;
   generatedAt: string;
+}
+
+// Streaming 相关
+export interface StreamChunk {
+  conversationId: string;
+  content: string;
+}
+
+export interface StreamEnd {
+  conversationId: string;
+  fullContent: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+}
+
+export interface StreamError {
+  conversationId: string;
+  error: string;
+}
+
+// Tool Calling 相关类型
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, any>;
+      required?: string[];
+    };
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+// Tool persistence types
+export interface ToolRecord {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  category: string | null;
+  parameters_schema: string | null;
+  implementation_type: 'builtin' | 'http' | 'script';
+  implementation_config: string | null;
+  is_enabled: boolean;
+  usage_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ToolCreateConfig {
+  name: string;
+  display_name: string;
+  description?: string;
+  category?: string;
+  parameters_schema?: string;
+  implementation_type?: 'builtin' | 'http' | 'script';
+  implementation_config?: string;
+  is_enabled?: boolean;
+}
+
+export interface ToolUpdateConfig {
+  display_name?: string;
+  description?: string;
+  category?: string;
+  parameters_schema?: string;
+  implementation_type?: 'builtin' | 'http' | 'script';
+  implementation_config?: string;
+  is_enabled?: boolean;
+}
+
+// Debug 相关
+export interface DebugModelCall {
+  type: 'request' | 'response' | 'chunk' | 'tool' | 'error';
+  timestamp: number;
+  conversationId?: string;
+  data: {
+    provider?: string;
+    model?: string;
+    messages?: Array<{ role: string; content: string }>;
+    content?: string;
+    tools?: string[];
+    toolName?: string;
+    toolArgs?: string;
+    toolResult?: string;
+    usage?: Record<string, any>;
+    error?: string;
+    duration?: number;
+  };
+}
+
+export type DebugLogCategory = 'llm' | 'ui';
+export type DebugLogLevel = 'info' | 'warning' | 'error';
+
+export interface UIStallReport {
+  type: 'long-task' | 'event-loop';
+  source?: string;
+  duration: number;
+  startedAt?: number;
+  blockedFor?: number;
+  name?: string;
+  url?: string;
+  visibilityState?: string;
+}
+
+export interface DebugLogEntry {
+  id: string;
+  timestamp: number;
+  category: DebugLogCategory;
+  type: string;
+  level: DebugLogLevel;
+  title: string;
+  detail?: string;
+  source?: string;
+  conversationId?: string;
+  duration?: number;
+  data?: Record<string, any>;
 }
