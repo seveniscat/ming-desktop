@@ -1,11 +1,6 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { Agent, AgentConfig, ChatMessage, Conversation, Skill } from '../../shared/types';
-import {
-  DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
-  LEGACY_ENGLISH_DAILY_REPORTER_SYSTEM_PROMPT,
-  LEGACY_DAILY_REPORTER_SYSTEM_PROMPT,
-} from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
 import { ToolExecutor } from '../tools/ToolExecutor';
@@ -52,8 +47,6 @@ export class AgentManager extends EventEmitter {
     // Seed default agents if none exist
     if (this.agents.size === 0) {
       await this.createDefaultAgents();
-    } else {
-      this.syncBuiltInDailyReporterPrompt();
     }
 
     Logger.info(`Initialized ${this.agents.size} agents`);
@@ -71,43 +64,7 @@ export class AgentManager extends EventEmitter {
     return value == null ? '' : String(value);
   }
 
-  private syncBuiltInDailyReporterPrompt(): void {
-    const legacyPrompts = [
-      LEGACY_DAILY_REPORTER_SYSTEM_PROMPT,
-      LEGACY_ENGLISH_DAILY_REPORTER_SYSTEM_PROMPT,
-    ].map((prompt) => prompt.trim());
-
-    const dailyReporter = Array.from(this.agents.values()).find((agent) => (
-      agent.name === 'Daily Reporter'
-      && agent.tools.includes('daily-report')
-      && legacyPrompts.includes(agent.systemPrompt.trim())
-    ));
-
-    if (!dailyReporter) {
-      return;
-    }
-
-    const updated: Agent = {
-      ...dailyReporter,
-      systemPrompt: DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.agents.set(updated.id, updated);
-
-    const db = getDatabase();
-    db.prepare(`
-      UPDATE agents
-      SET system_prompt = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, updated.id);
-
-    Logger.info('Daily Reporter default prompt synced to latest format');
-  }
-
   private async createDefaultAgents(): Promise<void> {
-    const dailyReporterPrompt = DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT;
-
     const defaultAgents: AgentConfig[] = [
       {
         name: 'Code Assistant',
@@ -115,13 +72,6 @@ export class AgentManager extends EventEmitter {
         model: '',
         systemPrompt: `You are a helpful coding assistant. You help users write, debug, and review code.`,
         tools: []
-      },
-      {
-        name: 'Daily Reporter',
-        description: 'Generate daily work reports from Git commits',
-        model: '',
-        systemPrompt: dailyReporterPrompt,
-        tools: ['daily-report']
       },
       {
         name: 'Research Assistant',

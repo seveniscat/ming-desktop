@@ -1,5 +1,4 @@
 import { getDatabase } from './connection';
-import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 
 export function runMigrations(): void {
   const db = getDatabase();
@@ -430,26 +429,14 @@ export function runMigrations(): void {
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration15Name);
   }
 
-  // Migration: seed daily/weekly report prompts into prompt_templates
-  const migration16Name = 'seed-report-prompt-templates';
+  // Migration: cleanup - remove duplicate daily report entry points (keep skill only)
+  const migration16Name = 'cleanup-report-entry-points';
   const applied16 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration16Name);
   if (!applied16) {
-    const insertPrompt = db.prepare(`
-      INSERT OR IGNORE INTO prompt_templates (id, name, type, trigger, description, content, variables, category, tags, enabled)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `);
-    insertPrompt.run(
-      'prompt-daily-report', '日报生成器', 'task', 'daily',
-      '根据 Git 提交记录生成工作日报',
-      DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT,
-      '[]', 'analysis', JSON.stringify(['日报', 'report']),
-    );
-    insertPrompt.run(
-      'prompt-weekly-report', '周报生成器', 'task', 'weekly',
-      '根据本周 Git 提交记录生成工作周报',
-      DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT,
-      '[]', 'analysis', JSON.stringify(['周报', 'report']),
-    );
+    // Remove seeded report prompt templates (superseded by built-in skills)
+    db.prepare("DELETE FROM prompt_templates WHERE id IN ('prompt-daily-report', 'prompt-weekly-report')").run();
+    // Remove the Daily Reporter agent (superseded by built-in skills)
+    db.prepare("DELETE FROM agents WHERE name = 'Daily Reporter' AND tools LIKE '%daily-report%'").run();
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration16Name);
   }
 }
