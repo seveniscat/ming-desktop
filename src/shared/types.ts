@@ -101,16 +101,55 @@ export interface Conversation {
   updatedAt: string;
 }
 
+// Claude Agent SDK config types
+export interface ClaudeAgentSDKHookConfig {
+  event: string;
+  command: string;
+  filterPattern?: string;
+}
+
+export interface ClaudeAgentSDKMcpServer {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+export interface ClaudeAgentSDKAgentDef {
+  name: string;
+  description: string;
+  model?: string;
+  prompt?: string;
+}
+
+export interface ClaudeAgentSDKConfig {
+  hooks?: {
+    preToolUse?: ClaudeAgentSDKHookConfig[];
+    postToolUse?: ClaudeAgentSDKHookConfig[];
+    stop?: ClaudeAgentSDKHookConfig[];
+    sessionStart?: ClaudeAgentSDKHookConfig[];
+    sessionEnd?: ClaudeAgentSDKHookConfig[];
+  };
+  mcpServers?: Record<string, ClaudeAgentSDKMcpServer>;
+  agents?: ClaudeAgentSDKAgentDef[];
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
+  allowedTools?: string[];
+  sessionId?: string;
+  forkSessionId?: string;
+  maxTurns?: number;
+  cwd?: string;
+}
+
 // LLM Provider 相关类型
 export interface LLMProvider {
   id: string;
   name: string;
-  type: 'openai' | 'anthropic' | 'local' | 'custom' | 'qwen' | 'deepseek';
+  type: 'openai' | 'anthropic' | 'local' | 'custom' | 'qwen' | 'deepseek' | 'claude-agent-sdk';
   apiKey?: string;
   baseURL?: string;
   models: string[];
   enabledModels: string[];
   enabled: boolean;
+  sdkConfig?: ClaudeAgentSDKConfig;
 }
 
 export interface LLMProviderConfig {
@@ -119,6 +158,7 @@ export interface LLMProviderConfig {
   apiKey?: string;
   baseURL?: string;
   models?: string[];
+  sdkConfig?: ClaudeAgentSDKConfig;
 }
 
 // 配置相关类型
