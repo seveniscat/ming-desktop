@@ -16,6 +16,8 @@ export interface StreamToolCall {
 
 export interface StreamWithToolsResult {
   fullContent: string;
+  reasoningContent?: string;
+  chunkCount?: number;
   toolCalls: StreamToolCall[];
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 }
@@ -226,10 +228,12 @@ export class LLMProviderManager extends EventEmitter {
     }
 
     const resolvedModel = model || provider.models[0] || 'gpt-4';
+    const callId = randomUUID().slice(0, 12);
 
     onDebug({
       type: 'request',
       timestamp: Date.now(),
+      callId,
       data: {
         provider: provider.name,
         model: resolvedModel,
@@ -240,34 +244,46 @@ export class LLMProviderManager extends EventEmitter {
     const startTime = Date.now();
 
     try {
-      let result: { fullContent: string; usage?: any };
+      let result: { fullContent: string; reasoningContent?: string; chunkCount?: number; usage?: any };
 
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
-        result = await this.chatStreamOpenAI(client as OpenAI, provider, messages, resolvedModel, onChunk, onDebug, signal);
+        result = await this.chatStreamOpenAI(client as OpenAI, provider, messages, resolvedModel, onChunk, signal);
       } else if (provider.type === 'anthropic') {
-        result = await this.chatStreamAnthropic(client as Anthropic, provider, messages, resolvedModel, onChunk, onDebug, signal);
+        result = await this.chatStreamAnthropic(client as Anthropic, provider, messages, resolvedModel, onChunk, signal);
       } else {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
 
+      // Build merged fullContent for return value (used by ChatEngine/DB)
+      let mergedContent = result.fullContent;
+      if (result.reasoningContent) {
+        mergedContent = `<think` + `>${result.reasoningContent}</think` + `>\n` + mergedContent;
+      }
+
+      const shortPreview = mergedContent.slice(0, 200) + (mergedContent.length > 200 ? '...' : '');
       onDebug({
         type: 'response',
         timestamp: Date.now(),
+        callId,
         data: {
           provider: provider.name,
           model: resolvedModel,
-          content: result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : ''),
+          content: shortPreview,
+          rawContent: result.fullContent || undefined,
+          reasoningContent: result.reasoningContent || undefined,
+          chunkCount: result.chunkCount,
           usage: result.usage,
           duration: Date.now() - startTime,
         },
       });
 
-      return result;
+      return { fullContent: mergedContent, usage: result.usage };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       onDebug({
         type: 'error',
         timestamp: Date.now(),
+        callId,
         data: {
           provider: provider.name,
           model: resolvedModel,
@@ -295,10 +311,12 @@ export class LLMProviderManager extends EventEmitter {
     if (!client) throw new Error(`Provider client not initialized: ${providerId}`);
 
     const resolvedModel = model || provider.models[0] || 'gpt-4';
+    const callId = randomUUID().slice(0, 12);
 
     onDebug({
       type: 'request',
       timestamp: Date.now(),
+      callId,
       data: {
         provider: provider.name,
         model: resolvedModel,
@@ -313,32 +331,44 @@ export class LLMProviderManager extends EventEmitter {
       let result: StreamWithToolsResult;
 
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
-        result = await this.chatStreamWithToolsOpenAI(client as OpenAI, provider, messages, resolvedModel, tools, onChunk, onDebug, signal);
+        result = await this.chatStreamWithToolsOpenAI(client as OpenAI, provider, messages, resolvedModel, tools, onChunk, signal);
       } else if (provider.type === 'anthropic') {
-        result = await this.chatStreamWithToolsAnthropic(client as Anthropic, provider, messages, resolvedModel, tools, onChunk, onDebug, signal);
+        result = await this.chatStreamWithToolsAnthropic(client as Anthropic, provider, messages, resolvedModel, tools, onChunk, signal);
       } else {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
 
+      // Build merged fullContent for return value
+      let mergedContent = result.fullContent;
+      if (result.reasoningContent) {
+        mergedContent = `<think` + `>${result.reasoningContent}</think` + `>\n` + mergedContent;
+      }
+
+      const shortPreview = mergedContent.slice(0, 200) + (mergedContent.length > 200 ? '...' : '');
       onDebug({
         type: 'response',
         timestamp: Date.now(),
+        callId,
         data: {
           provider: provider.name,
           model: resolvedModel,
-          content: result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : ''),
+          content: shortPreview,
+          rawContent: result.fullContent || undefined,
+          reasoningContent: result.reasoningContent || undefined,
+          chunkCount: result.chunkCount,
           tools: result.toolCalls.map(tc => tc.function.name),
           usage: result.usage,
           duration: Date.now() - startTime,
         },
       });
 
-      return result;
+      return { ...result, fullContent: mergedContent };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       onDebug({
         type: 'error',
         timestamp: Date.now(),
+        callId,
         data: { provider: provider.name, model: resolvedModel, error: errorMsg, duration: Date.now() - startTime },
       });
       throw error;
@@ -352,16 +382,21 @@ export class LLMProviderManager extends EventEmitter {
     model: string,
     tools: ToolDefinition[] | undefined,
     onChunk: (text: string) => void,
-    _onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal
   ): Promise<StreamWithToolsResult> {
+    const isReasoningModel = /deepseek|qwq|o[134]/i.test(model);
+
     const createOptions: any = {
       model,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       temperature: 0.7,
-      max_tokens: 2048,
+      max_tokens: isReasoningModel ? 8192 : 4096,
       stream: true,
     };
+
+    if (isReasoningModel) {
+      delete createOptions.temperature;
+    }
 
     if (tools && tools.length > 0) {
       createOptions.tools = tools;
@@ -370,16 +405,18 @@ export class LLMProviderManager extends EventEmitter {
     const stream = await client.chat.completions.create(createOptions, { signal });
 
     let fullContent = '';
+    let reasoningContent = '';
+    let chunkCount = 0;
     let usage: any = undefined;
     const toolCallAccumulators: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta;
+      chunkCount++;
 
       const reasoning = (delta as any)?.reasoning_content;
       if (reasoning) {
-        fullContent += reasoning;
-        onChunk(reasoning);
+        reasoningContent += reasoning;
       }
 
       if (delta?.content) {
@@ -417,7 +454,7 @@ export class LLMProviderManager extends EventEmitter {
         function: { name: acc.name, arguments: acc.arguments },
       }));
 
-    return { fullContent, toolCalls, usage };
+    return { fullContent, reasoningContent: reasoningContent || undefined, chunkCount, toolCalls, usage };
   }
 
   private async chatStreamWithToolsAnthropic(
@@ -427,7 +464,6 @@ export class LLMProviderManager extends EventEmitter {
     model: string,
     tools: ToolDefinition[] | undefined,
     onChunk: (text: string) => void,
-    _onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal
   ): Promise<StreamWithToolsResult> {
     const createOptions: any = {
@@ -450,10 +486,19 @@ export class LLMProviderManager extends EventEmitter {
     const stream = client.messages.stream(createOptions, { signal });
 
     let fullContent = '';
+    let thinkingContent = '';
+    let chunkCount = 0;
 
     stream.on('text', (text: string) => {
       fullContent += text;
       onChunk(text);
+      chunkCount++;
+    });
+
+    stream.on('thinking', (thinking: string) => {
+      if (typeof thinking === 'string') {
+        thinkingContent += thinking;
+      }
     });
 
     const finalMessage = await stream.finalMessage();
@@ -475,7 +520,7 @@ export class LLMProviderManager extends EventEmitter {
       totalTokens: (finalMessage.usage.input_tokens || 0) + (finalMessage.usage.output_tokens || 0),
     } : undefined;
 
-    return { fullContent, toolCalls, usage };
+    return { fullContent, reasoningContent: thinkingContent || undefined, chunkCount, toolCalls, usage };
   }
 
   private async chatStreamOpenAI(
@@ -484,25 +529,33 @@ export class LLMProviderManager extends EventEmitter {
     messages: ChatMessage[],
     model: string,
     onChunk: (text: string) => void,
-    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal
-  ): Promise<{ fullContent: string; usage?: any }> {
-    const stream = await client.chat.completions.create({
+  ): Promise<{ fullContent: string; reasoningContent?: string; chunkCount?: number; usage?: any }> {
+    const isReasoningModel = /deepseek|qwq|o[134]/i.test(model);
+
+    const createOpts: any = {
       model,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       temperature: 0.7,
-      max_tokens: 2048,
+      max_tokens: isReasoningModel ? 8192 : 4096,
       stream: true,
-    }, { signal });
+    };
+
+    if (isReasoningModel) {
+      delete createOpts.temperature;
+    }
+
+    const stream = await client.chat.completions.create(createOpts, { signal });
 
     let fullContent = '';
     let reasoningContent = '';
+    let chunkCount = 0;
     let usage: any = undefined;
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta;
+      chunkCount++;
 
-      // Handle reasoning_content (DeepSeek/Qwen)
       const reasoning = (delta as any)?.reasoning_content;
       if (reasoning) {
         reasoningContent += reasoning;
@@ -513,18 +566,7 @@ export class LLMProviderManager extends EventEmitter {
         onChunk(delta.content);
       }
 
-      // Debug: log each chunk
-      onDebug({
-        type: 'chunk',
-        timestamp: Date.now(),
-        data: {
-          content: delta?.content || '',
-          provider: provider.name,
-          model,
-        },
-      });
-
-      // Capture usage from final chunk (some providers include it)
+      // Capture usage from final chunk
       if ((chunk as any).usage) {
         usage = {
           promptTokens: (chunk as any).usage.prompt_tokens,
@@ -534,13 +576,7 @@ export class LLMProviderManager extends EventEmitter {
       }
     }
 
-    // Prepend reasoning content if present
-    if (reasoningContent) {
-      const prefix = `<think>${reasoningContent}</think>\n`;
-      fullContent = prefix + fullContent;
-    }
-
-    return { fullContent, usage };
+    return { fullContent, reasoningContent: reasoningContent || undefined, chunkCount, usage };
   }
 
   private async chatStreamAnthropic(
@@ -549,9 +585,8 @@ export class LLMProviderManager extends EventEmitter {
     messages: ChatMessage[],
     model: string,
     onChunk: (text: string) => void,
-    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal
-  ): Promise<{ fullContent: string; usage?: any }> {
+  ): Promise<{ fullContent: string; reasoningContent?: string; chunkCount?: number; usage?: any }> {
     const stream = client.messages.stream({
       model,
       max_tokens: 2048,
@@ -564,14 +599,12 @@ export class LLMProviderManager extends EventEmitter {
     let fullContent = '';
     let thinkingContent = '';
 
+    let chunkCount = 0;
+
     stream.on('text', (text: string) => {
       fullContent += text;
       onChunk(text);
-      onDebug({
-        type: 'chunk',
-        timestamp: Date.now(),
-        data: { content: text, provider: provider.name, model },
-      });
+      chunkCount++;
     });
 
     // Handle thinking events (extended thinking)
@@ -590,13 +623,7 @@ export class LLMProviderManager extends EventEmitter {
       totalTokens: finalMessage.usage.input_tokens + finalMessage.usage.output_tokens,
     } : undefined;
 
-    // Prepend thinking if present
-    if (thinkingContent) {
-      const prefix = `<think>${thinkingContent}</think>\n`;
-      fullContent = prefix + fullContent;
-    }
-
-    return { fullContent, usage };
+    return { fullContent, reasoningContent: thinkingContent || undefined, chunkCount, usage };
   }
 
   private async chatWithOpenAI(

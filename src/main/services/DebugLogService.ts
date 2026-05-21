@@ -55,6 +55,7 @@ export class DebugLogService extends EventEmitter {
       level,
       source,
       conversationId: event.conversationId,
+      callId: event.callId,
       duration: data.duration,
       title: this.modelTitle(event),
       detail: this.modelDetail(event),
@@ -100,6 +101,19 @@ export class DebugLogService extends EventEmitter {
       const messageCount = data.messages?.length || 0;
       const tools = data.tools?.length ? `, tools: ${data.tools.join(', ')}` : '';
       return `Messages: ${messageCount}${tools}`;
+    }
+
+    if (event.type === 'response') {
+      const parts: string[] = [];
+      if (data.rawContent) parts.push(`Content: ${data.rawContent.length} chars`);
+      if (data.reasoningContent) parts.push(`Reasoning: ${data.reasoningContent.length} chars`);
+      if (data.chunkCount) parts.push(`Chunks: ${data.chunkCount}`);
+      if (data.tools?.length) parts.push(`Tool calls: ${data.tools.join(', ')}`);
+      if (data.usage) {
+        const u = data.usage;
+        parts.push(`Tokens: ${u.promptTokens || 0}+${u.completionTokens || 0}`);
+      }
+      return parts.length > 0 ? parts.join(', ') : undefined;
     }
 
     if (event.type === 'tool') {

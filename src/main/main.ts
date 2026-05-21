@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { format } from 'date-fns';
@@ -355,9 +356,11 @@ function setupIPCHandlers(): void {
   ipcMain.handle(IPCChannels.LLM_CHAT, async (_, providerId: string, messages: any[]) => {
     const provider = llmManager.listProviders().find((item) => item.id === providerId);
     const startedAt = Date.now();
+    const callId = randomUUID().slice(0, 12);
     recordModelDebug({
       type: 'request',
       timestamp: startedAt,
+      callId,
       data: {
         provider: provider?.name,
         model: provider?.models[0],
@@ -367,13 +370,16 @@ function setupIPCHandlers(): void {
 
     try {
       const result = await llmManager.chat(providerId, messages);
+      const contentStr = typeof result === 'string' ? result : `[Tool calls: ${result.toolCalls.map((tool) => tool.function.name).join(', ')}]`;
       recordModelDebug({
         type: 'response',
         timestamp: Date.now(),
+        callId,
         data: {
           provider: provider?.name,
           model: provider?.models[0],
-          content: typeof result === 'string' ? result.slice(0, 200) : `[Tool calls: ${result.toolCalls.map((tool) => tool.function.name).join(', ')}]`,
+          content: contentStr.slice(0, 200) + (contentStr.length > 200 ? '...' : ''),
+          rawContent: contentStr,
           duration: Date.now() - startedAt,
         },
       });
@@ -382,6 +388,7 @@ function setupIPCHandlers(): void {
       recordModelDebug({
         type: 'error',
         timestamp: Date.now(),
+        callId,
         data: {
           provider: provider?.name,
           model: provider?.models[0],

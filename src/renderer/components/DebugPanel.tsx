@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Bug, Clock, Cpu, Eraser, ExternalLink, Radio, Search, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, Bug, Check, Clock, Copy, Cpu, Eraser, Link2, Radio, Search, Trash2 } from 'lucide-react';
 import type { DebugLogCategory, DebugLogEntry, DebugLogLevel } from '../../shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,25 @@ function dataPreview(entry: DebugLogEntry): string {
   return JSON.stringify(entry.data, null, 2);
 }
 
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-6 px-2 text-xs gap-1"
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {label && <span>{copied ? 'Copied' : label}</span>}
+    </Button>
+  );
+}
+
 export default function DebugPanel() {
   const [logs, setLogs] = useState<DebugLogEntry[]>([]);
   const [category, setCategory] = useState<DebugLogCategory | 'all'>('all');
@@ -51,6 +70,7 @@ export default function DebugPanel() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [conversationFilter, setConversationFilter] = useState<string>('all');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,18 +112,34 @@ export default function DebugPanel() {
     node.scrollTop = node.scrollHeight;
   }, [logs, autoScroll]);
 
+  const conversationIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const entry of logs) {
+      if (entry.conversationId) ids.add(entry.conversationId);
+    }
+    return Array.from(ids).slice(-20);
+  }, [logs]);
+
   const filteredLogs = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return logs.filter((entry) => {
       if (category !== 'all' && entry.category !== category) return false;
       if (level !== 'all' && entry.level !== level) return false;
+      if (conversationFilter !== 'all' && entry.conversationId !== conversationFilter) return false;
       if (!normalizedQuery) return true;
-      const haystack = `${entry.title} ${entry.detail || ''} ${entry.source || ''} ${entry.type}`.toLowerCase();
+      const haystack = `${entry.title} ${entry.detail || ''} ${entry.source || ''} ${entry.type} ${entry.callId || ''}`.toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [category, level, logs, query]);
+  }, [category, level, logs, query, conversationFilter]);
 
   const selected = filteredLogs.find((entry) => entry.id === selectedId) || filteredLogs.at(-1) || null;
+
+  // Find related entries by callId
+  const relatedEntries = useMemo(() => {
+    if (!selected?.callId) return [];
+    return logs.filter((e) => e.callId === selected.callId && e.id !== selected.id);
+  }, [logs, selected?.callId, selected?.id]);
+
   const llmCount = logs.filter((entry) => entry.category === 'llm').length;
   const uiCount = logs.filter((entry) => entry.category === 'ui').length;
   const issueCount = logs.filter((entry) => entry.level !== 'info').length;
@@ -150,7 +186,7 @@ export default function DebugPanel() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="h-9 pl-9"
-              placeholder="Search logs"
+              placeholder="Search logs..."
             />
           </div>
 
@@ -182,6 +218,21 @@ export default function DebugPanel() {
             ))}
           </div>
 
+          {conversationIds.length > 0 && (
+            <select
+              value={conversationFilter}
+              onChange={(e) => setConversationFilter(e.target.value)}
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="all">All Conversations</option>
+              {conversationIds.map((id) => (
+                <option key={id} value={id}>
+                  {id.slice(0, 12)}...
+                </option>
+              ))}
+            </select>
+          )}
+
           <Button
             variant={autoScroll ? 'secondary' : 'outline'}
             size="sm"
@@ -197,7 +248,7 @@ export default function DebugPanel() {
           </Button>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] max-lg:grid-cols-1">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_480px] max-lg:grid-cols-1">
           <section ref={scrollRef} className="min-h-0 overflow-y-auto border-r max-lg:border-r-0">
             {filteredLogs.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -249,6 +300,12 @@ export default function DebugPanel() {
                       {getCategoryIcon(selected.category)}
                       <span>{selected.category.toUpperCase()}</span>
                       <span>{selected.type}</span>
+                      {selected.callId && (
+                        <span className="flex items-center gap-1 text-primary">
+                          <Link2 size={12} />
+                          {selected.callId}
+                        </span>
+                      )}
                     </div>
                     <h2 className="mt-1 break-words text-base font-semibold">{selected.title}</h2>
                   </div>
@@ -276,20 +333,51 @@ export default function DebugPanel() {
                   </div>
                 </div>
 
-                {selected.detail && (
+                {/* Related entries by callId */}
+                {relatedEntries.length > 0 && (
                   <div className="rounded-md border bg-background p-3">
                     <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                      <AlertTriangle size={13} />
-                      Detail
+                      <Link2 size={13} />
+                      Related ({relatedEntries.length})
+                    </div>
+                    <div className="space-y-1">
+                      {relatedEntries.map((rel) => (
+                        <button
+                          key={rel.id}
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded px-2 py-1 text-xs hover:bg-muted transition-colors"
+                          onClick={() => setSelectedId(rel.id)}
+                        >
+                          <Badge variant="outline" className={cn('h-5 rounded text-[10px] capitalize', getLevelClass(rel.level))}>
+                            {rel.type}
+                          </Badge>
+                          <span className="truncate">{rel.title}</span>
+                          {rel.duration != null && (
+                            <span className="ml-auto text-muted-foreground">{Math.round(rel.duration)}ms</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selected.detail && (
+                  <div className="rounded-md border bg-background p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <AlertTriangle size={13} />
+                        Detail
+                      </div>
+                      <CopyButton text={selected.detail} label="Copy" />
                     </div>
                     <p className="break-words text-sm leading-relaxed">{selected.detail}</p>
                   </div>
                 )}
 
                 <div className="rounded-md border bg-background">
-                  <div className="flex items-center justify-between border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-                    <span>Payload</span>
-                    <ExternalLink size={13} />
+                  <div className="flex items-center justify-between border-b px-3 py-2">
+                    <span className="text-xs font-medium text-muted-foreground">Payload</span>
+                    <CopyButton text={dataPreview(selected) || '{}'} label="Copy JSON" />
                   </div>
                   <pre className="max-h-[42vh] overflow-auto p-3 text-xs leading-relaxed">
                     <code>{dataPreview(selected) || '{}'}</code>

@@ -253,11 +253,14 @@ export interface DebugModelCall {
   type: 'request' | 'response' | 'chunk' | 'tool' | 'error';
   timestamp: number;
   conversationId?: string;
+  callId?: string;
   data: {
     provider?: string;
     model?: string;
     messages?: Array<{ role: string; content: string }>;
     content?: string;
+    rawContent?: string;
+    reasoningContent?: string;
     tools?: string[];
     toolName?: string;
     toolArgs?: string;
@@ -265,6 +268,7 @@ export interface DebugModelCall {
     usage?: Record<string, any>;
     error?: string;
     duration?: number;
+    chunkCount?: number;
   };
 }
 
@@ -292,6 +296,7 @@ export interface DebugLogEntry {
   detail?: string;
   source?: string;
   conversationId?: string;
+  callId?: string;
   duration?: number;
   data?: Record<string, any>;
 }
