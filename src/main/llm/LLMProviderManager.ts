@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ToolCall } from '../../shared/types';
 import { Logger } from '../utils/Logger';
 
@@ -26,7 +27,7 @@ import { getDatabase } from '../database/connection';
 
 export class LLMProviderManager extends EventEmitter {
   private providers: Map<string, LLMProvider> = new Map();
-  private clients: Map<string, OpenAI | Anthropic> = new Map();
+  private clients: Map<string, OpenAI | Anthropic | null> = new Map();
 
   constructor(private configManager: ConfigManager) {
     super();
@@ -62,6 +63,13 @@ export class LLMProviderManager extends EventEmitter {
 
   private async initializeProviderClient(provider: LLMProvider): Promise<void> {
     try {
+      if (provider.type === 'claude-agent-sdk') {
+        this.clients.set(provider.id, null);
+        Logger.info(`SDK provider ready: ${provider.name}`);
+        return;
+      }
+
+      let client: OpenAI | Anthropic;
       let client: OpenAI | Anthropic;
 
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
@@ -225,6 +233,12 @@ export class LLMProviderManager extends EventEmitter {
     }
 
     const client = this.clients.get(providerId);
+
+    if (provider.type === 'claude-agent-sdk') {
+      const resolvedModel = model || provider.models[0] || 'claude-sonnet-4-6';
+      return this.chatStreamSDK(provider, messages, resolvedModel, onChunk, onDebug, signal);
+    }
+
     if (!client) {
       throw new Error(`Provider client not initialized: ${providerId}`);
     }
@@ -309,6 +323,12 @@ export class LLMProviderManager extends EventEmitter {
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error(`Provider not found: ${providerId}`);
 
+    if (provider.type === 'claude-agent-sdk') {
+      const resolvedModel = model || provider.models[0] || 'claude-sonnet-4-6';
+      const result = await this.chatStreamSDK(provider, messages, resolvedModel, onChunk, onDebug, signal);
+      return { ...result, toolCalls: [] };
+    }
+
     const client = this.clients.get(providerId);
     if (!client) throw new Error(`Provider client not initialized: ${providerId}`);
 
@@ -372,6 +392,130 @@ export class LLMProviderManager extends EventEmitter {
         timestamp: Date.now(),
         callId,
         data: { provider: provider.name, model: resolvedModel, error: errorMsg, duration: Date.now() - startTime },
+      });
+      throw error;
+    }
+  }
+
+  private async chatStreamSDK(
+    provider: LLMProvider,
+    messages: ChatMessage[],
+    model: string,
+    onChunk: (text: string) => void,
+    onDebug: (event: import('../../shared/types').DebugModelCall) => void,
+    signal?: AbortSignal
+  ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
+    const sdkConfig = provider.sdkConfig || {};
+    const callId = randomUUID().slice(0, 12);
+    const startTime = Date.now();
+
+    const systemContent = messages.find(m => m.role === 'system')?.content || '';
+    const userContent = messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
+
+    onDebug({
+      type: 'request',
+      timestamp: Date.now(),
+      callId,
+      data: {
+        provider: provider.name,
+        model,
+        messages: messages.map(m => ({ role: m.role, content: m.content.slice(0, 200) })),
+      },
+    });
+
+    try {
+      const options: any = {
+        model,
+        ...(systemContent && { systemPrompt: systemContent }),
+        ...(sdkConfig.cwd && { cwd: sdkConfig.cwd }),
+        ...(sdkConfig.permissionMode && { permissionMode: sdkConfig.permissionMode }),
+        ...(sdkConfig.allowedTools && { allowedTools: sdkConfig.allowedTools }),
+        ...(sdkConfig.maxTurns && { maxTurns: sdkConfig.maxTurns }),
+        ...(sdkConfig.sessionId && { resume: sdkConfig.sessionId }),
+        ...(sdkConfig.forkSessionId && { resume: sdkConfig.forkSessionId, forkSession: true }),
+      };
+
+      if (sdkConfig.mcpServers && Object.keys(sdkConfig.mcpServers).length > 0) {
+        options.mcpServers = sdkConfig.mcpServers;
+      }
+
+      if (sdkConfig.agents && sdkConfig.agents.length > 0) {
+        const agentMap: Record<string, any> = {};
+        for (const agent of sdkConfig.agents) {
+          agentMap[agent.name] = {
+            description: agent.description,
+            ...(agent.prompt && { prompt: agent.prompt }),
+            ...(agent.model && { model: agent.model }),
+          };
+        }
+        options.agents = agentMap;
+      }
+
+      const q = sdkQuery({ prompt: userContent, options });
+
+      let fullContent = '';
+
+      for await (const message of q) {
+        if (signal?.aborted) break;
+
+        if (message.type === 'assistant') {
+          const betaMessage = (message as any).message;
+          if (betaMessage?.content) {
+            const text = betaMessage.content
+              .filter((block: any) => block.type === 'text')
+              .map((block: any) => block.text)
+              .join('');
+            if (text) {
+              fullContent += text;
+              onChunk(text);
+            }
+          }
+        } else if (message.type === 'result') {
+          const resultMsg = message as any;
+          if (resultMsg.usage) {
+            onDebug({
+              type: 'response',
+              timestamp: Date.now(),
+              callId,
+              data: {
+                provider: provider.name,
+                model,
+                usage: {
+                  promptTokens: resultMsg.usage.input_tokens,
+                  completionTokens: resultMsg.usage.output_tokens,
+                  totalTokens: (resultMsg.usage.input_tokens || 0) + (resultMsg.usage.output_tokens || 0),
+                },
+                duration: Date.now() - startTime,
+              },
+            });
+          }
+        } else {
+          onDebug({
+            type: 'tool',
+            timestamp: Date.now(),
+            callId,
+            data: {
+              provider: provider.name,
+              model,
+              sdkEvent: message.type,
+              sdkEventData: JSON.stringify(message).slice(0, 500),
+            },
+          });
+        }
+      }
+
+      if (!fullContent) {
+        fullContent = '[SDK completed with no text output]';
+      }
+
+      return { fullContent };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      onDebug({
+        type: 'error',
+        timestamp: Date.now(),
+        callId,
+        data: { provider: provider.name, model, error: errorMsg, duration: Date.now() - startTime },
       });
       throw error;
     }
