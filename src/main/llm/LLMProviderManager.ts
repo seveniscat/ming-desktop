@@ -48,7 +48,8 @@ export class LLMProviderManager extends EventEmitter {
         baseURL: row.base_url,
         models: JSON.parse(row.models || '[]'),
         enabledModels: JSON.parse(row.enabled_models || '[]'),
-        enabled: !!row.enabled
+        enabled: !!row.enabled,
+        sdkConfig: row.sdk_config ? JSON.parse(row.sdk_config) : undefined,
       };
       this.providers.set(provider.id, provider);
       if (provider.enabled) {
@@ -123,9 +124,9 @@ export class LLMProviderManager extends EventEmitter {
     // Save to SQLite
     const db = getDatabase();
     db.prepare(`
-      INSERT INTO llm_providers (id, name, type, api_key, base_url, models, enabled, enabled_models)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(provider.id, provider.name, provider.type, provider.apiKey || null, provider.baseURL || null, JSON.stringify(provider.models), 1, JSON.stringify(provider.enabledModels));
+      INSERT INTO llm_providers (id, name, type, api_key, base_url, models, enabled, enabled_models, sdk_config)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(provider.id, provider.name, provider.type, provider.apiKey || null, provider.baseURL || null, JSON.stringify(provider.models), 1, JSON.stringify(provider.enabledModels), provider.sdkConfig ? JSON.stringify(provider.sdkConfig) : null);
 
     this.emit('provider-added', provider);
     Logger.info(`LLM provider added: ${provider.name}`);
@@ -163,7 +164,8 @@ export class LLMProviderManager extends EventEmitter {
         updates.apiKey !== undefined ||
         updates.baseURL !== undefined ||
         updates.type !== undefined ||
-        updates.enabled !== undefined
+        updates.enabled !== undefined ||
+        updates.sdkConfig !== undefined
       ) {
         this.clients.delete(providerId);
         if (updated.enabled) {
@@ -175,9 +177,9 @@ export class LLMProviderManager extends EventEmitter {
       const db = getDatabase();
       db.prepare(`
         UPDATE llm_providers
-        SET name = ?, type = ?, api_key = ?, base_url = ?, models = ?, enabled = ?, enabled_models = ?, updated_at = datetime('now')
+        SET name = ?, type = ?, api_key = ?, base_url = ?, models = ?, enabled = ?, enabled_models = ?, sdk_config = ?, updated_at = datetime('now')
         WHERE id = ?
-      `).run(updated.name, updated.type, updated.apiKey || null, updated.baseURL || null, JSON.stringify(updated.models), updated.enabled ? 1 : 0, JSON.stringify(updated.enabledModels), providerId);
+      `).run(updated.name, updated.type, updated.apiKey || null, updated.baseURL || null, JSON.stringify(updated.models), updated.enabled ? 1 : 0, JSON.stringify(updated.enabledModels), updated.sdkConfig ? JSON.stringify(updated.sdkConfig) : null, providerId);
 
       this.emit('provider-updated', updated);
       Logger.info(`LLM provider updated: ${updated.name}`);
@@ -739,6 +741,8 @@ export class LLMProviderManager extends EventEmitter {
         return ['qwen-turbo', 'qwen-plus', 'qwen-max'];
       case 'deepseek':
         return ['deepseek-chat', 'deepseek-coder'];
+      case 'claude-agent-sdk':
+        return ['claude-sonnet-4-6', 'claude-opus-4-7'];
       case 'local':
         return ['llama-2-7b', 'mistral-7b'];
       default:
