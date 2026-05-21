@@ -451,4 +451,29 @@ export function runMigrations(): void {
     }
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration17Name);
   }
+
+  // Migration: add claude-agent-sdk provider type and sdk_config column
+  const migration18Name = 'add-claude-agent-sdk-provider';
+  const applied18 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration18Name);
+  if (!applied18) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS llm_providers_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('openai','anthropic','local','custom','qwen','deepseek','claude-agent-sdk')),
+        api_key TEXT,
+        base_url TEXT,
+        models TEXT DEFAULT '[]',
+        enabled INTEGER DEFAULT 1,
+        enabled_models TEXT DEFAULT '[]',
+        sdk_config TEXT DEFAULT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO llm_providers_new SELECT id, name, type, api_key, base_url, models, enabled, enabled_models, NULL, created_at, updated_at FROM llm_providers;
+      DROP TABLE llm_providers;
+      ALTER TABLE llm_providers_new RENAME TO llm_providers;
+    `);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration18Name);
+  }
 }
