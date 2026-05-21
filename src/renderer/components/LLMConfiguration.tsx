@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Key, Plus, Pencil, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
-import type { LLMProvider, LLMProviderConfig } from '../../shared/types';
+import type { LLMProvider, LLMProviderConfig, ClaudeAgentSDKConfig } from '../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,6 +63,7 @@ export default function LLMConfiguration() {
   const [error, setError] = useState<string | null>(null);
   const [fetchingModelsId, setFetchingModelsId] = useState<string | null>(null);
   const [expandedModelsId, setExpandedModelsId] = useState<string | null>(null);
+  const [sdkConfig, setSdkConfig] = useState<ClaudeAgentSDKConfig>({});
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -106,13 +107,15 @@ export default function LLMConfiguration() {
       const config: LLMProviderConfig = {
         name: addForm.name.trim(),
         type: addForm.type,
-        apiKey: addForm.type !== 'claude-agent-sdk' ? addForm.apiKey.trim() : undefined,
+        apiKey: addForm.type !== 'claude-agent-sdk' ? addForm.apiKey?.trim() : undefined,
         baseURL: addForm.baseURL?.trim() || undefined,
         models,
+        sdkConfig: addForm.type === 'claude-agent-sdk' && Object.keys(sdkConfig).length > 0 ? sdkConfig : undefined,
       };
       await window.electronAPI.llm.addProvider(config);
       setShowAdd(false);
       setAddForm(emptyAddForm);
+      setSdkConfig({});
       await loadProviders();
     } catch (e) {
       console.error(e);
@@ -154,8 +157,11 @@ export default function LLMConfiguration() {
       modelsStr: p.models?.join(', ') ?? '',
       apiKey: '',
     });
+    setSdkConfig(p.sdkConfig || {});
     setError(null);
   };
+
+  const editingProvider = editingId ? providers.find(p => p.id === editingId) : null;
 
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,6 +175,7 @@ export default function LLMConfiguration() {
         .filter(Boolean);
       const updates: Partial<LLMProvider> = {
         baseURL: editForm.baseURL.trim() || undefined,
+        ...(editingProvider?.type === 'claude-agent-sdk' && { sdkConfig: Object.keys(sdkConfig).length > 0 ? sdkConfig : undefined }),
       };
       if (modelList.length) {
         updates.models = modelList;
@@ -460,11 +467,56 @@ export default function LLMConfiguration() {
                 placeholder="First model is used for chat, e.g. gpt-4, gpt-3.5-turbo"
               />
             </div>
+            {addForm.type === 'claude-agent-sdk' && (
+              <div className="space-y-3 border-t pt-3 mt-3">
+                <div>
+                  <Label className="block mb-1.5">Permission Mode</Label>
+                  <Select
+                    value={sdkConfig.permissionMode || 'default'}
+                    onValueChange={val => setSdkConfig({ ...sdkConfig, permissionMode: val as ClaudeAgentSDKConfig['permissionMode'] })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default</SelectItem>
+                      <SelectItem value="acceptEdits">Accept Edits</SelectItem>
+                      <SelectItem value="plan">Plan</SelectItem>
+                      <SelectItem value="bypassPermissions">Bypass Permissions</SelectItem>
+                      <SelectItem value="auto">Auto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Max Turns</Label>
+                  <Input
+                    type="number"
+                    value={sdkConfig.maxTurns ?? ''}
+                    onChange={e => setSdkConfig({ ...sdkConfig, maxTurns: e.target.value ? Number(e.target.value) : undefined })}
+                    placeholder="Default: unlimited"
+                  />
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Working Directory (cwd)</Label>
+                  <Input
+                    value={sdkConfig.cwd ?? ''}
+                    onChange={e => setSdkConfig({ ...sdkConfig, cwd: e.target.value || undefined })}
+                    placeholder="/path/to/project"
+                  />
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Session ID (to resume)</Label>
+                  <Input
+                    value={sdkConfig.sessionId ?? ''}
+                    onChange={e => setSdkConfig({ ...sdkConfig, sessionId: e.target.value || undefined })}
+                    placeholder="Leave blank for new session"
+                  />
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setShowAdd(false)}
+                onClick={() => { setShowAdd(false); setSdkConfig({}); }}
               >
                 Cancel
               </Button>
@@ -483,13 +535,15 @@ export default function LLMConfiguration() {
             <DialogTitle>Edit provider</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleEditSave} className="space-y-3">
-            <div>
-              <Label className="block mb-1.5">Base URL</Label>
-              <Input
-                value={editForm.baseURL}
-                onChange={e => setEditForm({ ...editForm, baseURL: e.target.value })}
-              />
-            </div>
+            {editingProvider?.type !== 'claude-agent-sdk' && (
+              <div>
+                <Label className="block mb-1.5">Base URL</Label>
+                <Input
+                  value={editForm.baseURL}
+                  onChange={e => setEditForm({ ...editForm, baseURL: e.target.value })}
+                />
+              </div>
+            )}
             <div>
               <Label className="block mb-1.5">Models (comma-separated)</Label>
               <Input
@@ -498,21 +552,68 @@ export default function LLMConfiguration() {
               />
               <p className="text-xs text-muted-foreground mt-1">The first model is used for API calls.</p>
             </div>
-            <div>
-              <Label className="block mb-1.5">New API key (optional)</Label>
-              <Input
-                type="password"
-                autoComplete="off"
-                value={editForm.apiKey}
-                onChange={e => setEditForm({ ...editForm, apiKey: e.target.value })}
+            {editingProvider?.type !== 'claude-agent-sdk' && (
+              <div>
+                <Label className="block mb-1.5">New API key (optional)</Label>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  value={editForm.apiKey}
+                  onChange={e => setEditForm({ ...editForm, apiKey: e.target.value })}
                 placeholder="Leave blank to keep current key"
               />
             </div>
+            )}
+            {editingProvider?.type === 'claude-agent-sdk' && (
+              <div className="space-y-3 border-t pt-3 mt-3">
+                <div>
+                  <Label className="block mb-1.5">Permission Mode</Label>
+                  <Select
+                    value={sdkConfig.permissionMode || 'default'}
+                    onValueChange={val => setSdkConfig({ ...sdkConfig, permissionMode: val as ClaudeAgentSDKConfig['permissionMode'] })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default</SelectItem>
+                      <SelectItem value="acceptEdits">Accept Edits</SelectItem>
+                      <SelectItem value="plan">Plan</SelectItem>
+                      <SelectItem value="bypassPermissions">Bypass Permissions</SelectItem>
+                      <SelectItem value="auto">Auto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Max Turns</Label>
+                  <Input
+                    type="number"
+                    value={sdkConfig.maxTurns ?? ''}
+                    onChange={e => setSdkConfig({ ...sdkConfig, maxTurns: e.target.value ? Number(e.target.value) : undefined })}
+                    placeholder="Default: unlimited"
+                  />
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Working Directory (cwd)</Label>
+                  <Input
+                    value={sdkConfig.cwd ?? ''}
+                    onChange={e => setSdkConfig({ ...sdkConfig, cwd: e.target.value || undefined })}
+                    placeholder="/path/to/project"
+                  />
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Session ID (to resume)</Label>
+                  <Input
+                    value={sdkConfig.sessionId ?? ''}
+                    onChange={e => setSdkConfig({ ...sdkConfig, sessionId: e.target.value || undefined })}
+                    placeholder="Leave blank for new session"
+                  />
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setEditingId(null)}
+                onClick={() => { setEditingId(null); setSdkConfig({}); }}
               >
                 Cancel
               </Button>
