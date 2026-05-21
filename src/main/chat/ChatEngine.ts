@@ -73,6 +73,18 @@ export class ChatEngine {
       let fullContent = '';
       let toolRounds = 0;
 
+      const isSdkProvider = provider?.type === 'claude-agent-sdk';
+
+      if (isSdkProvider) {
+        const result = await this.llmManager.chatStreamWithTools(
+          providerId, messages, resolvedModel,
+          undefined, callbacks.onChunk, callbacks.onDebug, signal,
+        );
+        fullContent = result.fullContent;
+        callbacks.onEnd({ fullContent, toolRounds: 0 });
+        return;
+      }
+
       while (toolRounds < MAX_TOOL_ROUNDS) {
         if (signal.aborted) break;
 
