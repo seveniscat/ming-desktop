@@ -28,6 +28,7 @@ const PROVIDER_TYPES: { value: LLMProvider['type']; label: string }[] = [
   { value: 'qwen', label: 'Qwen (通义千问)' },
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'custom', label: 'OpenAI-compatible' },
+  { value: 'claude-agent-sdk', label: 'Claude Agent SDK' },
 ];
 
 function maskApiKey(key?: string): string {
@@ -92,7 +93,7 @@ export default function LLMConfiguration() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addForm.name.trim() || !addForm.apiKey?.trim()) {
+    if (!addForm.name.trim() || (addForm.type !== 'claude-agent-sdk' && !addForm.apiKey?.trim())) {
       setError('Name and API key are required');
       return;
     }
@@ -105,7 +106,7 @@ export default function LLMConfiguration() {
       const config: LLMProviderConfig = {
         name: addForm.name.trim(),
         type: addForm.type,
-        apiKey: addForm.apiKey.trim(),
+        apiKey: addForm.type !== 'claude-agent-sdk' ? addForm.apiKey.trim() : undefined,
         baseURL: addForm.baseURL?.trim() || undefined,
         models,
       };
@@ -413,32 +414,36 @@ export default function LLMConfiguration() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="block mb-1.5">API key</Label>
-              <Input
-                type="password"
-                autoComplete="off"
-                value={addForm.apiKey ?? ''}
-                onChange={e => setAddForm({ ...addForm, apiKey: e.target.value })}
-                placeholder="sk-…"
-              />
-            </div>
-            <div>
-              <Label className="block mb-1.5">Base URL (optional)</Label>
-              <Input
-                value={addForm.baseURL ?? ''}
-                onChange={e => setAddForm({ ...addForm, baseURL: e.target.value })}
-                placeholder={
-                  addForm.type === 'anthropic'
-                    ? 'https://api.anthropic.com'
-                    : addForm.type === 'qwen'
-                      ? 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-                      : addForm.type === 'deepseek'
-                        ? 'https://api.deepseek.com/v1'
-                        : 'https://api.openai.com/v1'
-                }
-              />
-            </div>
+            {addForm.type !== 'claude-agent-sdk' && (
+              <>
+                <div>
+                  <Label className="block mb-1.5">API key</Label>
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    value={addForm.apiKey ?? ''}
+                    onChange={e => setAddForm({ ...addForm, apiKey: e.target.value })}
+                    placeholder="sk-…"
+                  />
+                </div>
+                <div>
+                  <Label className="block mb-1.5">Base URL (optional)</Label>
+                  <Input
+                    value={addForm.baseURL ?? ''}
+                    onChange={e => setAddForm({ ...addForm, baseURL: e.target.value })}
+                    placeholder={
+                      addForm.type === 'anthropic'
+                        ? 'https://api.anthropic.com'
+                        : addForm.type === 'qwen'
+                          ? 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+                          : addForm.type === 'deepseek'
+                            ? 'https://api.deepseek.com/v1'
+                            : 'https://api.openai.com/v1'
+                    }
+                  />
+                </div>
+              </>
+            )}
             <div>
               <Label className="block mb-1.5">Models (optional)</Label>
               <Input
