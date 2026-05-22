@@ -17,10 +17,9 @@ export function toThreadMessageLike(msg: Message): ThreadMessageLike {
       : [],
     id: `msg-${nextId++}`,
     createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-    status:
-      msg.role === 'assistant' && msg.content === ''
-        ? { type: 'running' }
-        : { type: 'complete', reason: 'stop' as const },
+    ...(msg.role === 'assistant'
+      ? { status: msg.content === '' ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const } }
+      : {}),
   };
 }
 
