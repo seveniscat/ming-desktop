@@ -1,0 +1,175 @@
+/*
+ * assistant-ui theme overrides
+ *
+ * Maps our app's CSS design tokens to assistant-ui's data attribute selectors.
+ * assistant-ui uses Radix-style data attributes for styling hooks rather than
+ * CSS classes, so we style via those selectors.
+ */
+
+/* ---------- Thread root ---------- */
+[data-aui-thread-root] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+/* ---------- Viewport (scrollable message area) ---------- */
+[data-aui-viewport] {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+/* ---------- Messages ---------- */
+[data-aui-message] {
+  margin-bottom: 0.75rem;
+}
+
+[data-aui-message][data-aui-role="assistant"] {
+  background: transparent;
+}
+
+/* ---------- Message content text ---------- */
+[data-aui-message-text] {
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+}
+
+/* ---------- Composer ---------- */
+[data-aui-composer-root] {
+  border-top: 1px solid hsl(var(--border));
+  padding: 0.75rem 1rem;
+  background: hsl(var(--background));
+}
+
+[data-aui-composer-input] {
+  width: 100%;
+  min-height: 2.5rem;
+  max-height: 10rem;
+  resize: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+[data-aui-composer-input]:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
+}
+
+[data-aui-composer-input]::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+[data-aui-composer-input]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Send / Cancel buttons ---------- */
+[data-aui-composer-send] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+[data-aui-composer-send]:hover {
+  opacity: 0.9;
+}
+
+[data-aui-composer-send]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+[data-aui-composer-cancel] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* ---------- Tool call parts ---------- */
+[data-aui-tool-call] {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: var(--surface);
+}
+
+[data-aui-tool-call-name] {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* ---------- Error ---------- */
+[data-aui-error] {
+  color: hsl(var(--destructive));
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  background: hsl(var(--destructive) / 0.1);
+}
+
+/* ---------- Empty state ---------- */
+[data-aui-thread-empty] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 2rem;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------- Branch picker ---------- */
+[data-aui-branch-picker] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------- Suggestions ---------- */
+[data-aui-suggestion] {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+[data-aui-suggestion]:hover {
+  background: var(--surface-hover);
+  border-color: hsl(var(--primary) / 0.3);
+}
