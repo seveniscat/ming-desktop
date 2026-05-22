@@ -79,6 +79,7 @@ export class ChatEngine {
         const result = await this.llmManager.chatStreamWithTools(
           providerId, messages, resolvedModel,
           undefined, callbacks.onChunk, callbacks.onDebug, signal,
+          req.conversationId,
         );
         fullContent = result.fullContent;
         callbacks.onEnd({ fullContent, toolRounds: 0 });

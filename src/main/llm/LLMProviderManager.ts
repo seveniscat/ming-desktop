@@ -27,6 +27,7 @@ import { getDatabase } from '../database/connection';
 export class LLMProviderManager extends EventEmitter {
   private providers: Map<string, LLMProvider> = new Map();
   private clients: Map<string, OpenAI | Anthropic | null> = new Map();
+  private sdkSessions: Map<string, string> = new Map(); // key: `${providerId}:${conversationId}` → sessionId
 
   constructor(private configManager: ConfigManager) {
     super();
@@ -223,7 +224,8 @@ export class LLMProviderManager extends EventEmitter {
     model: string | undefined,
     onChunk: (text: string) => void,
     onDebug: (event: import('../../shared/types').DebugModelCall) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationId?: string
   ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
     const provider = this.providers.get(providerId);
     if (!provider) {
@@ -234,7 +236,7 @@ export class LLMProviderManager extends EventEmitter {
 
     if (provider.type === 'claude-agent-sdk') {
       const resolvedModel = model || provider.models[0] || 'claude-sonnet-4-6';
-      return this.chatStreamSDK(provider, messages, resolvedModel, onChunk, onDebug, signal);
+      return this.chatStreamSDK(provider, messages, resolvedModel, onChunk, onDebug, signal, conversationId);
     }
 
     if (!client) {
@@ -316,14 +318,15 @@ export class LLMProviderManager extends EventEmitter {
     tools: ToolDefinition[] | undefined,
     onChunk: (text: string) => void,
     onDebug: (event: import('../../shared/types').DebugModelCall) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationId?: string
   ): Promise<StreamWithToolsResult> {
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error(`Provider not found: ${providerId}`);
 
     if (provider.type === 'claude-agent-sdk') {
       const resolvedModel = model || provider.models[0] || 'claude-sonnet-4-6';
-      const result = await this.chatStreamSDK(provider, messages, resolvedModel, onChunk, onDebug, signal);
+      const result = await this.chatStreamSDK(provider, messages, resolvedModel, onChunk, onDebug, signal, conversationId);
       return { ...result, toolCalls: [] };
     }
 
@@ -401,14 +404,26 @@ export class LLMProviderManager extends EventEmitter {
     model: string,
     onChunk: (text: string) => void,
     onDebug: (event: import('../../shared/types').DebugModelCall) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationId?: string
   ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
     const sdkConfig = provider.sdkConfig || {};
     const callId = randomUUID().slice(0, 12);
     const startTime = Date.now();
 
     const systemContent = messages.find(m => m.role === 'system')?.content || '';
-    const userContent = messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
+    const userMessages = messages.filter(m => m.role === 'user');
+
+    // Session management: resume existing session or start new
+    const sessionKey = conversationId ? `${provider.id}:${conversationId}` : '';
+    const existingSessionId = sessionKey ? this.sdkSessions.get(sessionKey) : undefined;
+    const isResuming = !!existingSessionId;
+
+    // When resuming: only send the latest user message (SDK has history)
+    // When new session: send all user messages
+    const promptText = isResuming
+      ? (userMessages[userMessages.length - 1]?.content || '')
+      : userMessages.map(m => m.content).join('\n');
 
     onDebug({
       type: 'request',
@@ -418,18 +433,20 @@ export class LLMProviderManager extends EventEmitter {
         provider: provider.name,
         model,
         messages: messages.map(m => ({ role: m.role, content: m.content.slice(0, 200) })),
+        ...(isResuming && { sdkResumeSession: existingSessionId }),
       },
     });
 
     try {
       const options: any = {
         model,
-        ...(systemContent && { systemPrompt: systemContent }),
+        ...(!isResuming && systemContent && { systemPrompt: systemContent }),
         ...(sdkConfig.cwd && { cwd: sdkConfig.cwd }),
         ...(sdkConfig.permissionMode && { permissionMode: sdkConfig.permissionMode }),
         ...(sdkConfig.allowedTools && { allowedTools: sdkConfig.allowedTools }),
         ...(sdkConfig.maxTurns && { maxTurns: sdkConfig.maxTurns }),
-        ...(sdkConfig.sessionId && { resume: sdkConfig.sessionId }),
+        ...(isResuming && { resume: existingSessionId }),
+        ...(!isResuming && sdkConfig.sessionId && { resume: sdkConfig.sessionId }),
         ...(sdkConfig.forkSessionId && { resume: sdkConfig.forkSessionId, forkSession: true }),
       };
 
@@ -450,12 +467,18 @@ export class LLMProviderManager extends EventEmitter {
       }
 
       const sdkModule = require('@anthropic-ai/claude-agent-sdk') as any;
-      const q = sdkModule.query({ prompt: userContent, options });
+      const q = sdkModule.query({ prompt: promptText, options });
 
       let fullContent = '';
 
       for await (const message of q) {
         if (signal?.aborted) break;
+
+        // Capture session_id from any message that carries it
+        const sid = (message as any).session_id;
+        if (sid && sessionKey) {
+          this.sdkSessions.set(sessionKey, sid);
+        }
 
         if (message.type === 'assistant') {
           const betaMessage = (message as any).message;
