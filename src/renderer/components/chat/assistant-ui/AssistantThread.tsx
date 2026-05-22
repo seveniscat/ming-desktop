@@ -1,4 +1,4 @@
-import { ThreadPrimitive, MessagePrimitive, ComposerPrimitive } from '@assistant-ui/react';
+import { ThreadPrimitive, MessagePrimitive } from '@assistant-ui/react';
 
 const SUGGESTIONS = [
   'Explain this code to me',
@@ -9,12 +9,14 @@ const SUGGESTIONS = [
 /**
  * Thread component built from assistant-ui primitives.
  *
- * Uses the headless primitives (ThreadPrimitive.*, MessagePrimitive.*,
- * ComposerPrimitive.*) to assemble a complete chat thread with:
+ * Uses the headless primitives (ThreadPrimitive.*, MessagePrimitive.*)
+ * to assemble a chat thread with:
  * - Viewport with auto-scroll
  * - Message list with user/assistant bubbles
  * - Empty state with suggestion buttons
- * - Composer input with send/cancel
+ *
+ * Note: The composer is NOT included here. Render AssistantComposer
+ * separately below this component in the layout for full control.
  */
 export function AssistantThread() {
   return (
@@ -73,22 +75,6 @@ export function AssistantThread() {
           </button>
         </ThreadPrimitive.ScrollToBottom>
       </ThreadPrimitive.Viewport>
-
-      {/* Composer footer */}
-      <div className="border-t border-[hsl(var(--border))] p-3 bg-[hsl(var(--background))]">
-        <ComposerPrimitive.Root className="flex items-end gap-2">
-          <ComposerPrimitive.Input
-            placeholder="Type a message..."
-            className="flex-1 min-h-[2.5rem] max-h-[10rem] resize-none border border-[hsl(var(--border))] rounded-[var(--radius)] px-3 py-2 text-sm bg-[var(--surface)] text-[hsl(var(--foreground))] outline-none focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--primary)/0.15)] placeholder:text-[hsl(var(--muted-foreground))]"
-          />
-          <ComposerPrimitive.Send className="inline-flex items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] px-3 py-2 text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
-            Send
-          </ComposerPrimitive.Send>
-          <ComposerPrimitive.Cancel className="inline-flex items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] px-3 py-2 text-sm font-medium cursor-pointer">
-            Stop
-          </ComposerPrimitive.Cancel>
-        </ComposerPrimitive.Root>
-      </div>
     </ThreadPrimitive.Root>
   );
 }

@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { useChatConversations } from './hooks/useChatConversations';
-import { useChatMessages } from './hooks/useChatMessages';
 import { useChatInput } from './hooks/useChatInput';
 import { useExecutionState } from './hooks/useExecutionState';
 import ConversationList from './ConversationList';
 import ChatHeader from './ChatHeader';
-import ChatMessages from './ChatMessages';
-import ChatInput from './ChatInput';
-import AgentStatusBar from './AgentStatusBar';
 import VariableFillDialog from './VariableFillDialog';
 import SkillParameterDialog from './SkillParameterDialog';
-import type { LLMProvider, Conversation } from './types';
+import { useIpcChatRuntime } from './assistant-ui/useIpcChatRuntime';
+import { AssistantThread } from './assistant-ui/AssistantThread';
+import { AssistantComposer } from './assistant-ui/AssistantComposer';
+import { AssistantTheme } from './assistant-ui/AssistantTheme';
+import { appendStreamText, appendStreamError, createEmptyAssistantMessage } from './assistant-ui/messageAdapter';
+import type { LLMProvider, Conversation, Message } from './types';
 import type { PromptTemplate } from '../../../shared/types';
 
 function extractVariables(content: string): string[] {
@@ -34,6 +36,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // --- Conversation list management ---
   const {
     conversations,
     setConversations,
@@ -42,35 +45,112 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     activeConversationRef,
     loadConversations,
     loadConversationMessages,
-    getLatestConversations,
     handleNewConversation,
     handleDeleteConversation,
     handleRenameConversation,
   } = useChatConversations();
 
-  const { executionState, setExecutionState, toggleCollapsed, resetExecution } = useExecutionState(activeConversationRef);
+  // --- Execution state (debug panel) ---
+  const { resetExecution } = useExecutionState(activeConversationRef);
 
-  const {
-    messages,
-    setMessages,
-    isLoading,
-    sendConversationMessage,
-    handleAbortChat,
-    activateSkill,
-    deactivateSkill,
-    getActiveSkills,
-  } = useChatMessages({
-    currentConversationId,
-    setCurrentConversationId,
-    activeConversationRef,
-    selectedModel,
-    setSelectedModel,
-    setExecutionState,
-    getLatestConversations,
-    loadConversationMessages,
-    setConversations,
-    loadConversations,
-  });
+  // --- Chat state managed locally (fed to both IPC runtime and legacy paths) ---
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeSkills, setActiveSkills] = useState<Map<string, string[]>>(new Map());
+
+  // --- Skill management ---
+  const activateSkill = useCallback((convId: string, skillId: string) => {
+    setActiveSkills(prev => {
+      const next = new Map(prev);
+      const existing = next.get(convId) || [];
+      if (!existing.includes(skillId)) {
+        next.set(convId, [...existing, skillId]);
+      }
+      return next;
+    });
+  }, []);
+
+  const deactivateSkill = useCallback((convId: string, skillId: string) => {
+    setActiveSkills(prev => {
+      const next = new Map(prev);
+      const existing = next.get(convId) || [];
+      next.set(convId, existing.filter(id => id !== skillId));
+      return next;
+    });
+  }, []);
+
+  const getActiveSkills = useCallback((convId: string) => {
+    return activeSkills.get(convId) || [];
+  }, [activeSkills]);
+
+  // --- Programmatic send (for launch requests & skill auto-messages) ---
+  // This mirrors useIpcChatRuntime's onNew but is called imperatively,
+  // avoiding double listener registration since the runtime only registers
+  // listeners when the user sends via the assistant-ui composer.
+  const sendProgrammaticMessage = useCallback(async ({
+    message,
+    model,
+    extraSkillIds,
+  }: {
+    message: string;
+    model?: string;
+    extraSkillIds?: string[];
+  }) => {
+    if (isLoading) return;
+
+    let convId: string | null = currentConversationId;
+    if (!convId) {
+      try {
+        const conv = await window.electronAPI.conversations.create();
+        convId = conv.id;
+        setConversations(prev => [conv, ...prev]);
+        setCurrentConversationId(convId);
+      } catch (error) {
+        console.error('Failed to create conversation:', error);
+        return;
+      }
+    }
+
+    activeConversationRef.current = convId;
+
+    const userMsg: Message = { role: 'user', content: message, timestamp: new Date().toISOString() };
+    const assistantMsg = createEmptyAssistantMessage();
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    setIsLoading(true);
+
+    const removeChunk = window.electronAPI.conversations.onStreamChunk((data) => {
+      if (data.conversationId !== convId) return;
+      setMessages(prev => appendStreamText(prev, data.content));
+    });
+
+    const removeEnd = window.electronAPI.conversations.onStreamEnd((data) => {
+      removeChunk(); removeEnd(); removeError(); removeToolEvent();
+      if (data.conversationId !== convId) return;
+      setIsLoading(false);
+      activeConversationRef.current = null;
+      loadConversations();
+    });
+
+    const removeError = window.electronAPI.conversations.onStreamError((data) => {
+      removeChunk(); removeEnd(); removeError(); removeToolEvent();
+      if (data.conversationId !== convId) return;
+      setMessages(prev => appendStreamError(prev, data.error));
+      setIsLoading(false);
+      activeConversationRef.current = null;
+    });
+
+    const removeToolEvent = window.electronAPI.conversations.onStreamToolEvent(() => {});
+
+    const stateSkillIds = activeSkills.get(convId!) || [];
+    const merged = extraSkillIds?.length
+      ? [...new Set([...stateSkillIds, ...extraSkillIds])]
+      : stateSkillIds;
+
+    window.electronAPI.conversations.chat(
+      convId!, null, message, model || selectedModel || undefined,
+      merged.length > 0 ? merged : undefined,
+    );
+  }, [isLoading, currentConversationId, selectedModel, activeSkills, setConversations, setCurrentConversationId, activeConversationRef, loadConversations]);
 
   const handleActivateSkill = useCallback(async (skillId: string, autoMessage?: string) => {
     let convId = currentConversationId;
@@ -82,23 +162,17 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     }
     activateSkill(convId!, skillId);
     if (autoMessage) {
-      await sendConversationMessage({
+      await sendProgrammaticMessage({
         message: autoMessage,
         model: selectedModel || undefined,
         extraSkillIds: [skillId],
       });
     }
-  }, [currentConversationId, activateSkill, setConversations, setCurrentConversationId, sendConversationMessage, selectedModel]);
+  }, [currentConversationId, activateSkill, setConversations, setCurrentConversationId, sendProgrammaticMessage, selectedModel]);
 
+  // --- Chat input (slash menu, prompt suggestions, variable fill, skill params) ---
   const {
-    input,
     setInput,
-    inputRef,
-    promptSuggestions,
-    promptMenuOpen,
-    selectedPromptIndex,
-    setSelectedPromptIndex,
-    applyPromptSuggestion,
     pendingVariablePrompt,
     applyVariableValues,
     cancelVariableFill,
@@ -120,7 +194,21 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     }
   }, [currentConversationId, deactivateSkill]);
 
-  // Load initial data
+  // --- Assistant-ui runtime ---
+  const activeSkillIds = currentConversationId ? getActiveSkills(currentConversationId) : [];
+
+  const runtime = useIpcChatRuntime({
+    conversationId: currentConversationId,
+    setConversationId: setCurrentConversationId,
+    messages,
+    setMessages,
+    isRunning: isLoading,
+    setIsRunning: setIsLoading,
+    selectedModel,
+    activeSkillIds,
+  });
+
+  // --- Load initial data ---
   useEffect(() => {
     loadConversations();
     loadProviders();
@@ -163,6 +251,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     }
   };
 
+  // --- Conversation selection ---
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setCurrentConversationId(conv.id);
     resetExecution();
@@ -183,47 +272,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     }
   }, [handleNewConversation, setMessages, resetExecution]);
 
-  const handleSendMessage = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
-
-    await sendConversationMessage({
-      message: input,
-      model: selectedModel || undefined,
-    });
-    setInput('');
-  }, [input, isLoading, selectedModel, sendConversationMessage, setInput]);
-
-  const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (promptMenuOpen) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedPromptIndex((idx) => (idx + 1) % promptSuggestions.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedPromptIndex((idx) => (idx - 1 + promptSuggestions.length) % promptSuggestions.length);
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        applyPromptSuggestion(promptSuggestions[selectedPromptIndex]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setInput('');
-        return;
-      }
-    }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  }, [promptMenuOpen, promptSuggestions, selectedPromptIndex, setSelectedPromptIndex, applyPromptSuggestion, setInput, handleSendMessage]);
-
-  // Handle launch request
+  // --- Handle launch request ---
   useEffect(() => {
     if (!launchRequest || isLoading) return;
     onLaunchHandled?.();
@@ -233,13 +282,13 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
       return;
     }
 
-    void sendConversationMessage({
+    void sendProgrammaticMessage({
       message: launchRequest.message,
       model: launchRequest.model,
     });
   }, [isLoading, launchRequest, onLaunchHandled]);
 
-  // Resize handle logic
+  // --- Resize handle logic ---
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
@@ -290,47 +339,28 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
         onMouseDown={handleMouseDown}
       />
 
-      {/* Chat main panel */}
-      <div className="flex-1 h-full flex flex-col min-w-0">
-        <ChatHeader />
+      {/* Chat main panel - wrapped with assistant-ui runtime */}
+      <AssistantRuntimeProvider runtime={runtime}>
+        <div className="flex-1 h-full flex flex-col min-w-0">
+          <ChatHeader />
 
-        <ChatMessages
-          messages={messages}
-          isLoading={isLoading}
-          executionState={executionState}
-          selectedAgent={undefined}
-          onToggleExecution={toggleCollapsed}
-          onSuggestionClick={(text) => setInput(text)}
-        />
+          <AssistantTheme>
+            {/* Thread (messages + empty state) */}
+            <div className="flex-1 min-h-0">
+              <AssistantThread />
+            </div>
 
-        <AgentStatusBar
-          executionState={executionState}
-          isLoading={isLoading}
-          onAbort={handleAbortChat}
-        />
-
-        <ChatInput
-          input={input}
-          setInput={setInput}
-          inputRef={inputRef}
-          isLoading={isLoading}
-          selectedAgent={undefined}
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-          agents={[]}
-          setSelectedAgentId={() => {}}
-          providers={providers}
-          promptMenuOpen={promptMenuOpen}
-          promptSuggestions={promptSuggestions}
-          selectedPromptIndex={selectedPromptIndex}
-          onSend={handleSendMessage}
-          onAbort={handleAbortChat}
-          onKeyDown={handleInputKeyDown}
-          onApplyPromptSuggestion={applyPromptSuggestion}
-          activeSkillBadges={activeSkillBadges}
-          onRemoveSkill={handleRemoveSkill}
-        />
-      </div>
+            {/* Composer (model selector + skill badges + input) */}
+            <AssistantComposer
+              providers={providers}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              activeSkillBadges={activeSkillBadges}
+              onRemoveSkill={handleRemoveSkill}
+            />
+          </AssistantTheme>
+        </div>
+      </AssistantRuntimeProvider>
 
       <VariableFillDialog
         open={!!pendingVariablePrompt}
