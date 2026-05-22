@@ -1,25 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
-import { Cpu, X } from 'lucide-react';
+import { Cpu, X, Square } from 'lucide-react';
 import { useChatConversations } from './hooks/useChatConversations';
-import { useChatInput } from './hooks/useChatInput';
 import { useExecutionState } from './hooks/useExecutionState';
+import { useSlashCommands } from './hooks/useSlashCommands';
 import ConversationList from './ConversationList';
 import ChatHeader from './ChatHeader';
 import VariableFillDialog from './VariableFillDialog';
 import SkillParameterDialog from './SkillParameterDialog';
+import ExecutionDetails from './ExecutionDetails';
 import { useIpcChatRuntime } from './assistant-ui/useIpcChatRuntime';
 import { AssistantThread } from './assistant-ui/AssistantThread';
 import { AssistantTheme } from './assistant-ui/AssistantTheme';
 import { appendStreamText, appendStreamError, createEmptyAssistantMessage } from './assistant-ui/messageAdapter';
 import type { LLMProvider, Conversation, Message } from './types';
 import type { PromptTemplate } from '../../../shared/types';
-
-function extractVariables(content: string): string[] {
-  const matches = content.match(/\{(\w+)\}/g);
-  if (!matches) return [];
-  return [...new Set(matches.map((m) => m.slice(1, -1)))];
-}
 
 interface ChatLayoutProps {
   launchRequest?: any | null;
@@ -51,7 +46,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   } = useChatConversations();
 
   // --- Execution state (debug panel) ---
-  const { resetExecution } = useExecutionState(activeConversationRef);
+  const { executionState, toggleCollapsed, resetExecution } = useExecutionState(activeConversationRef);
 
   // --- Chat state managed locally (fed to both IPC runtime and legacy paths) ---
   const [messages, setMessages] = useState<Message[]>([]);
@@ -84,9 +79,6 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   }, [activeSkills]);
 
   // --- Programmatic send (for launch requests & skill auto-messages) ---
-  // This mirrors useIpcChatRuntime's onNew but is called imperatively,
-  // avoiding double listener registration since the runtime only registers
-  // listeners when the user sends via the assistant-ui composer.
   const sendProgrammaticMessage = useCallback(async ({
     message,
     model,
@@ -153,6 +145,13 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   }, [isLoading, currentConversationId, selectedModel, activeSkills, setConversations, setCurrentConversationId, activeConversationRef, loadConversations]);
 
   const handleActivateSkill = useCallback(async (skillId: string, autoMessage?: string) => {
+    // Handle prompt injections (prefixed with __prompt__)
+    if (skillId.startsWith('__prompt__')) {
+      if (!autoMessage) return;
+      await sendProgrammaticMessage({ message: autoMessage, model: selectedModel || undefined });
+      return;
+    }
+
     let convId = currentConversationId;
     if (!convId) {
       const conv = await window.electronAPI.conversations.create();
@@ -170,17 +169,21 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     }
   }, [currentConversationId, activateSkill, setConversations, setCurrentConversationId, sendProgrammaticMessage, selectedModel]);
 
-  // --- Chat input (slash menu, prompt suggestions, variable fill, skill params) ---
+  // --- Slash commands (skills + prompt templates) ---
   const {
-    setInput,
+    commands,
     pendingVariablePrompt,
+    pendingParameterSkill,
     applyVariableValues,
     cancelVariableFill,
-    pendingParameterSkill,
     applySkillParameters,
     cancelSkillParameters,
     skills: availableSkills,
-  } = useChatInput({ promptTemplates, isLoading, onActivateSkill: handleActivateSkill });
+  } = useSlashCommands(promptTemplates, {
+    onActivateSkill: handleActivateSkill,
+    onPendingVariablePrompt: () => {},
+    onPendingParameterSkill: () => {},
+  });
 
   const activeSkillBadges = (currentConversationId ? getActiveSkills(currentConversationId) : [])
     .map(id => {
@@ -278,7 +281,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     onLaunchHandled?.();
 
     if (launchRequest.autoSend === false) {
-      setInput(launchRequest.message || '');
+      // TODO: inject text into assistant-ui composer
       return;
     }
 
@@ -381,17 +384,57 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
               ))}
             </div>
 
-            {/* Thread (messages + empty state + composer) */}
+            {/* Thread (messages + empty state + composer with slash commands) */}
             <div className="flex-1 min-h-0">
-              <AssistantThread />
+              <AssistantThread commands={commands} />
             </div>
+
+            {/* Execution debug panel */}
+            {executionState.steps.length > 0 && (
+              <div className="px-4 pb-2">
+                <ExecutionDetails
+                  steps={executionState.steps}
+                  collapsed={executionState.collapsed}
+                  finished={executionState.finished}
+                  onToggle={toggleCollapsed}
+                />
+              </div>
+            )}
+
+            {/* Agent status bar */}
+            {isLoading && !executionState.finished && (
+              <div className="h-10 px-4 flex items-center justify-between bg-muted/50 border-t border-[hsl(var(--border))]">
+                <div className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+                  <span className="text-sm text-muted-foreground">
+                    {executionState.steps.length > 0
+                      ? (() => {
+                          const last = executionState.steps[executionState.steps.length - 1];
+                          if (last.type === 'tool' && last.status === 'active') return `Using tool: ${last.title.replace(/^调用工具：/, '')}`;
+                          if (last.type === 'chunk') return 'Generating...';
+                          if (last.type === 'request') return 'Thinking...';
+                          return 'Processing...';
+                        })()
+                      : 'Thinking...'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (currentConversationId) window.electronAPI.conversations.abort(currentConversationId); }}
+                  className="h-7 px-3 flex items-center gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                >
+                  <Square size={12} />
+                  Stop
+                </button>
+              </div>
+            )}
           </AssistantTheme>
         </div>
       </AssistantRuntimeProvider>
 
       <VariableFillDialog
         open={!!pendingVariablePrompt}
-        variables={pendingVariablePrompt ? extractVariables(pendingVariablePrompt.content) : []}
+        variables={pendingVariablePrompt ? pendingVariablePrompt.variables : []}
         onConfirm={applyVariableValues}
         onCancel={cancelVariableFill}
       />

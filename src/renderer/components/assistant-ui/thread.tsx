@@ -31,8 +31,11 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  unstable_useSlashCommandAdapter,
+  type Unstable_SlashCommand,
   useAuiState,
 } from "@assistant-ui/react";
+import type { Unstable_TriggerItem } from "@assistant-ui/core";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -48,7 +51,11 @@ import {
 } from "lucide-react";
 import type { FC } from "react";
 
-export const Thread: FC = () => {
+interface ThreadProps {
+  commands?: Unstable_SlashCommand[];
+}
+
+export const Thread: FC<ThreadProps> = ({ commands }) => {
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root flex h-full flex-col bg-background"
@@ -79,7 +86,7 @@ export const Thread: FC = () => {
 
           <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-[var(--composer-radius)] bg-background pb-4 md:pb-6">
             <ThreadScrollToBottom />
-            <Composer />
+            <Composer commands={commands} />
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
@@ -154,26 +161,59 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
+  const slash = unstable_useSlashCommandAdapter({
+    commands: commands ?? [],
+  });
+
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone asChild>
-        <div
-          data-slot="aui_composer-shell"
-          className="flex w-full flex-col gap-2 rounded-[var(--composer-radius)] border bg-background p-[var(--composer-padding)] transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      {commands && commands.length > 0 && (
+        <ComposerPrimitive.Unstable_TriggerPopover
+          char="/"
+          {...slash}
+          className="z-50 max-h-64 w-72 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
         >
-          <ComposerAttachments />
-          <ComposerPrimitive.Input
-            placeholder="Send a message..."
-            className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
-            rows={1}
-            autoFocus
-            aria-label="Message input"
-          />
-          <ComposerAction />
-        </div>
-      </ComposerPrimitive.AttachmentDropzone>
-    </ComposerPrimitive.Root>
+          <ComposerPrimitive.Unstable_TriggerPopover.Action {...slash.action} />
+          <ComposerPrimitive.Unstable_TriggerPopoverItems
+            className="grid gap-0.5"
+          >
+            {(items: readonly Unstable_TriggerItem[]) =>
+              items.map((item) => (
+                <ComposerPrimitive.Unstable_TriggerPopoverItem
+                  key={item.id}
+                  item={item}
+                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                >
+                  <span className="font-medium">{item.label ?? item.id}</span>
+                  {item.description && (
+                    <span className="text-muted-foreground text-xs truncate">{item.description}</span>
+                  )}
+                </ComposerPrimitive.Unstable_TriggerPopoverItem>
+              ))
+            }
+          </ComposerPrimitive.Unstable_TriggerPopoverItems>
+        </ComposerPrimitive.Unstable_TriggerPopover>
+      )}
+      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+        <ComposerPrimitive.AttachmentDropzone asChild>
+          <div
+            data-slot="aui_composer-shell"
+            className="flex w-full flex-col gap-2 rounded-[var(--composer-radius)] border bg-background p-[var(--composer-padding)] transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
+          >
+            <ComposerAttachments />
+            <ComposerPrimitive.Input
+              placeholder="Send a message... (type / for commands)"
+              className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
+              rows={1}
+              autoFocus
+              aria-label="Message input"
+            />
+            <ComposerAction />
+          </div>
+        </ComposerPrimitive.AttachmentDropzone>
+      </ComposerPrimitive.Root>
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 };
 
