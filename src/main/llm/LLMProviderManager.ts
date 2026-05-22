@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ToolCall } from '../../shared/types';
 import { Logger } from '../utils/Logger';
 
@@ -69,7 +68,6 @@ export class LLMProviderManager extends EventEmitter {
         return;
       }
 
-      let client: OpenAI | Anthropic;
       let client: OpenAI | Anthropic;
 
       if (provider.type === 'openai' || provider.type === 'custom' || provider.type === 'qwen' || provider.type === 'deepseek') {
@@ -451,7 +449,8 @@ export class LLMProviderManager extends EventEmitter {
         options.agents = agentMap;
       }
 
-      const q = sdkQuery({ prompt: userContent, options });
+      const sdkModule = require('@anthropic-ai/claude-agent-sdk') as any;
+      const q = sdkModule.query({ prompt: userContent, options });
 
       let fullContent = '';
 
