@@ -169,7 +169,7 @@ async function initializeServices(): Promise<void> {
   toolExecutor.register(createWriteFileTool());
   toolExecutor.register(createExecuteCommandTool(executorService));
   toolExecutor.register(createSearchFilesTool());
-  toolExecutor.register(createSuggestMemoryTool(() => memoryManager));
+  toolExecutor.register(createSuggestMemoryTool());
   toolExecutor.register(createRecallMemoriesTool(() => memoryManager));
 
   const toolApprovalManager = new ToolApprovalManager();
