@@ -31,9 +31,13 @@ export function createRecallMemoriesTool(
       try {
         const mm = getMemoryManager();
         const limit = params.limit || 10;
-        const memories = mm.getActiveMemories().slice(0, limit);
+        const query = params.query?.trim();
+        const memories = query
+          ? mm.search(query, limit)
+          : mm.getActiveMemories().slice(0, limit);
         return JSON.stringify({
           count: memories.length,
+          query: query || null,
           memories: memories.map(m => ({ content: m.content, category: m.category })),
         });
       } catch (error: any) {
