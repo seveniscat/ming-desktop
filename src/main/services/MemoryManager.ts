@@ -72,11 +72,28 @@ export class MemoryManager {
     const memories = this.getActiveMemories();
     if (memories.length === 0) return '';
 
-    const order = ['profile', 'preference', 'context', 'custom'];
-    const sorted = [...memories].sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category));
+    const groups: Record<string, string[]> = { profile: [], preference: [], context: [], custom: [] };
+    for (const m of memories) {
+      const cat = groups[m.category] ? m.category : 'custom';
+      groups[cat].push(m.content);
+    }
 
-    const lines = sorted.map(m => `- [${m.category}] ${m.content}`).join('\n');
-    return `\n## User Memories\n\nThe following are facts and preferences you should remember about the user:\n\n${lines}\n`;
+    const labels: Record<string, string> = {
+      profile: 'User Profile',
+      preference: 'Preferences',
+      context: 'Work Context',
+      custom: 'Other Facts',
+    };
+
+    const sections = Object.entries(groups)
+      .filter(([, items]) => items.length > 0)
+      .map(([cat, items]) => {
+        const lines = items.map(c => `- ${c}`).join('\n');
+        return `### ${labels[cat]}\n${lines}`;
+      })
+      .join('\n\n');
+
+    return `\n## User Memories\n\nUse these facts to personalize your responses. Do not repeat them unless asked.\n\n${sections}\n`;
   }
 
   estimateTokens(): number {
