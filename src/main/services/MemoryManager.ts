@@ -68,6 +68,21 @@ export class MemoryManager {
     return this.list({ status: 'active' });
   }
 
+  search(query: string, limit: number = 5): MemoryRecord[] {
+    const db = getDatabase();
+    try {
+      return db.prepare(`
+        SELECT m.* FROM memories m
+        JOIN memories_fts fts ON m.rowid = fts.rowid
+        WHERE memories_fts MATCH ? AND m.status = 'active'
+        ORDER BY rank
+        LIMIT ?
+      `).all(query, limit) as MemoryRecord[];
+    } catch {
+      return [];
+    }
+  }
+
   formatMemoriesForPrompt(): string {
     const memories = this.getActiveMemories();
     if (memories.length === 0) return '';
