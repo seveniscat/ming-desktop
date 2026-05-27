@@ -85,6 +85,47 @@ export class MemoryManager {
 
   formatMemoriesForPrompt(): string {
     const memories = this.getActiveMemories();
+    return this.formatMemoryList(memories);
+  }
+
+  formatMemoriesForPromptWithContext(recentMessages: string[]): string {
+    if (recentMessages.length === 0) return this.formatMemoriesForPrompt();
+
+    const keywords = this.extractKeywords(recentMessages.join(' '));
+    if (keywords.length === 0) return this.formatMemoriesForPrompt();
+
+    const query = keywords.join(' OR ');
+    const relevant = this.search(query, 10);
+    if (relevant.length === 0) return this.formatMemoriesForPrompt();
+
+    return this.formatMemoryList(relevant);
+  }
+
+  private extractKeywords(text: string): string[] {
+    const words = text
+      .toLowerCase()
+      .replace(/[^\w一-鿿぀-ゟ゠-ヿ]+/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 1);
+
+    const stopWords = new Set([
+      'the', 'is', 'at', 'which', 'on', 'a', 'an', 'and', 'or', 'but', 'in',
+      'with', 'to', 'for', 'of', 'not', 'no', 'can', 'had', 'has', 'have',
+      'do', 'does', 'did', 'will', 'would', 'should', 'could', 'may', 'might',
+      'be', 'been', 'being', 'am', 'are', 'was', 'were', 'it', 'its',
+      'this', 'that', 'these', 'those', 'i', 'me', 'my', 'we', 'our',
+      'you', 'your', 'he', 'him', 'his', 'she', 'her', 'they', 'them',
+      'what', 'how', 'when', 'where', 'why', 'who', 'whom',
+      '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都',
+      '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你',
+      '会', '着', '没有', '看', '好', '自己', '这', '他', '她', '们',
+    ]);
+
+    const unique = [...new Set(words.filter(w => !stopWords.has(w)))];
+    return unique.slice(0, 10);
+  }
+
+  private formatMemoryList(memories: MemoryRecord[]): string {
     if (memories.length === 0) return '';
 
     const groups: Record<string, string[]> = { profile: [], preference: [], context: [], custom: [] };

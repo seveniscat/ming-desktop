@@ -38,7 +38,7 @@ export class ChatService {
         `).all(conversationId, limit) as any[];
         return rows.reverse().map(r => ({ role: r.role, content: r.content, timestamp: r.timestamp }));
       },
-      () => memoryManager.formatMemoriesForPrompt(),
+      (recentMessages: string[]) => memoryManager.formatMemoriesForPromptWithContext(recentMessages),
     );
   }
 

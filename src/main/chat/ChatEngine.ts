@@ -47,7 +47,7 @@ export class ChatEngine {
     private loadAgent: (id: string) => Agent | undefined,
     private loadSkills: (ids: string[]) => Skill[],
     private loadHistory: (conversationId: string, limit: number) => ChatMessage[],
-    private getMemoryPrompt: () => string,
+    private getMemoryPrompt: (recentMessages: string[]) => string,
   ) {}
 
   async chatStream(
@@ -149,12 +149,16 @@ export class ChatEngine {
       systemContent = 'You are a helpful assistant.';
     }
 
-    const memoryPrompt = this.getMemoryPrompt();
+    const history = this.loadHistory(req.conversationId, DEFAULT_HISTORY_LIMIT);
+
+    const recentUserMessages = history
+      .filter(m => m.role === 'user')
+      .slice(-5)
+      .map(m => m.content);
+    const memoryPrompt = this.getMemoryPrompt(recentUserMessages);
     if (memoryPrompt) {
       systemContent += '\n' + memoryPrompt;
     }
-
-    const history = this.loadHistory(req.conversationId, DEFAULT_HISTORY_LIMIT);
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
       ...history,
