@@ -183,7 +183,7 @@ const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
                 <ComposerPrimitive.Unstable_TriggerPopoverItem
                   key={item.id}
                   item={item}
-                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground cursor-pointer"
                 >
                   <span className="font-medium">{item.label ?? item.id}</span>
                   {item.description && (
