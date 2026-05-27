@@ -410,6 +410,18 @@ export function runMigrations(): void {
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration14Name);
   }
 
+  // Migration: add reasoning_content column to chat_messages
+  const migrationReasoningName = 'add-reasoning-content';
+  const appliedReasoning = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migrationReasoningName);
+  if (!appliedReasoning) {
+    try {
+      db.exec('ALTER TABLE chat_messages ADD COLUMN reasoning_content TEXT DEFAULT NULL');
+    } catch {
+      // Column may already exist on fresh installs
+    }
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migrationReasoningName);
+  }
+
   // Migration: add memories table
   const migration15Name = 'add-memories';
   const applied15 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration15Name);

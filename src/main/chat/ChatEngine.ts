@@ -24,6 +24,7 @@ export interface ChatRequest {
 
 export interface ChatResult {
   fullContent: string;
+  reasoningContent?: string;
   toolRounds: number;
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 }
@@ -71,6 +72,7 @@ export class ChatEngine {
       const resolvedModel = req.model || provider?.models[0] || '';
 
       let fullContent = '';
+      let reasoningContent = '';
       let toolRounds = 0;
 
       const isSdkProvider = provider?.type === 'claude-agent-sdk';
@@ -82,7 +84,8 @@ export class ChatEngine {
           req.conversationId,
         );
         fullContent = result.fullContent;
-        callbacks.onEnd({ fullContent, toolRounds: 0 });
+        reasoningContent = result.reasoningContent || '';
+        callbacks.onEnd({ fullContent, reasoningContent: reasoningContent || undefined, toolRounds: 0 });
         return;
       }
 
@@ -100,6 +103,9 @@ export class ChatEngine {
         );
 
         fullContent += result.fullContent;
+        if (result.reasoningContent) {
+          reasoningContent += result.reasoningContent;
+        }
 
         if (result.toolCalls.length === 0) break;
 
@@ -112,7 +118,7 @@ export class ChatEngine {
         toolRounds++;
       }
 
-      callbacks.onEnd({ fullContent, toolRounds });
+      callbacks.onEnd({ fullContent, reasoningContent: reasoningContent || undefined, toolRounds });
     } catch (error) {
       if (signal.aborted) {
         callbacks.onEnd({ fullContent: '', toolRounds: 0 });

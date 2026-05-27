@@ -226,7 +226,7 @@ export class LLMProviderManager extends EventEmitter {
     onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal,
     conversationId?: string
-  ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
+  ): Promise<{ fullContent: string; reasoningContent?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
     const provider = this.providers.get(providerId);
     if (!provider) {
       throw new Error(`Provider not found: ${providerId}`);
@@ -270,13 +270,7 @@ export class LLMProviderManager extends EventEmitter {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
 
-      // Build merged fullContent for return value (used by ChatEngine/DB)
-      let mergedContent = result.fullContent;
-      if (result.reasoningContent) {
-        mergedContent = `<think` + `>${result.reasoningContent}</think` + `>\n` + mergedContent;
-      }
-
-      const shortPreview = mergedContent.slice(0, 200) + (mergedContent.length > 200 ? '...' : '');
+      const shortPreview = result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : '');
       onDebug({
         type: 'response',
         timestamp: Date.now(),
@@ -293,7 +287,7 @@ export class LLMProviderManager extends EventEmitter {
         },
       });
 
-      return { fullContent: mergedContent, usage: result.usage };
+      return { fullContent: result.fullContent, reasoningContent: result.reasoningContent, usage: result.usage };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       onDebug({
@@ -361,13 +355,7 @@ export class LLMProviderManager extends EventEmitter {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
 
-      // Build merged fullContent for return value
-      let mergedContent = result.fullContent;
-      if (result.reasoningContent) {
-        mergedContent = `<think` + `>${result.reasoningContent}</think` + `>\n` + mergedContent;
-      }
-
-      const shortPreview = mergedContent.slice(0, 200) + (mergedContent.length > 200 ? '...' : '');
+      const shortPreview = result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : '');
       onDebug({
         type: 'response',
         timestamp: Date.now(),
@@ -385,7 +373,7 @@ export class LLMProviderManager extends EventEmitter {
         },
       });
 
-      return { ...result, fullContent: mergedContent };
+      return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       onDebug({
@@ -833,11 +821,6 @@ export class LLMProviderManager extends EventEmitter {
     }
 
     const content = msg?.content || '';
-    // Some providers (DeepSeek, Qwen) return reasoning in a separate field
-    const reasoning = (msg as any)?.reasoning_content;
-    if (reasoning) {
-      return `<think>${reasoning}</think>\n${content}`;
-    }
     return content;
   }
 
@@ -884,15 +867,9 @@ export class LLMProviderManager extends EventEmitter {
       return { toolCalls };
     }
 
-    // Check for thinking blocks (Anthropic extended thinking)
-    const parts = response.content as Array<{ type: string; text?: string; thinking?: string }>;
-    const thinkingText = parts.filter(b => b.type === 'thinking').map(b => b.thinking || b.text || '').join('\n');
+    const parts = response.content as Array<{ type: string; text?: string }>;
     const textParts = parts.filter(b => b.type === 'text').map(b => b.text || '');
-    const mainText = textParts.join('\n');
-    if (thinkingText) {
-      return `<think>${thinkingText}</think>\n${mainText}`;
-    }
-    return mainText;
+    return textParts.join('\n');
   }
 
   private getDefaultModels(type: LLMProvider['type']): string[] {

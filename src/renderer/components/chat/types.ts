@@ -18,6 +18,7 @@ export interface Conversation {
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
+  reasoningContent?: string;
   timestamp?: string;
 }
 

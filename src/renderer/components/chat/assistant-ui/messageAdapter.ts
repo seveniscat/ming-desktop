@@ -4,32 +4,60 @@ import type { Message } from '../types';
 let nextId = 1;
 
 /**
- * Strip <think>...</think> tags from content. These are inserted by the backend
- * when merging reasoning_content into the stored message, but should not be
- * rendered as plain text — assistant-ui has dedicated reasoning parts for that.
+ * Parse <think>...</think> tags from content string (backward compat for old messages).
+ * Returns extracted reasoning text and remaining content.
  */
-function stripThinkTags(content: string): string {
-  return content.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+function parseThinkTags(content: string): { reasoning?: string; text: string } {
+  const match = content.match(/<think>([\s\S]*?)<\/think>\n?/);
+  if (!match) return { text: content };
+  const reasoning = match[1].trim();
+  const text = content.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+  return { reasoning: reasoning || undefined, text };
 }
 
 /**
  * Convert a native Message to assistant-ui's ThreadMessageLike format.
  *
- * Our format: { role, content, timestamp? }
- * assistant-ui format: { role, content: TextMessagePart[] | string, id?, createdAt?, status? }
+ * For assistant messages with reasoning, emits a reasoning part followed by a text part.
+ * Falls back to parsing <think> tags from content for backward compatibility.
  */
 export function toThreadMessageLike(msg: Message): ThreadMessageLike {
-  const displayContent = msg.role === 'assistant' ? stripThinkTags(msg.content) : msg.content;
+  if (msg.role === 'assistant') {
+    const parts: Array<{ type: 'reasoning'; text: string } | { type: 'text'; text: string }> = [];
+
+    let reasoning = msg.reasoningContent;
+    let textContent = msg.content;
+
+    // Backward compat: parse <think> tags from old messages
+    if (!reasoning && msg.content.includes('<think>')) {
+      const parsed = parseThinkTags(msg.content);
+      reasoning = parsed.reasoning;
+      textContent = parsed.text;
+    }
+
+    if (reasoning) {
+      parts.push({ type: 'reasoning', text: reasoning });
+    }
+    if (textContent) {
+      parts.push({ type: 'text', text: textContent });
+    }
+
+    return {
+      role: 'assistant',
+      content: parts,
+      id: `msg-${nextId++}`,
+      createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+      status: msg.content === '' ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const },
+    };
+  }
+
   return {
     role: msg.role,
-    content: displayContent
-      ? [{ type: 'text' as const, text: displayContent }]
+    content: msg.content
+      ? [{ type: 'text' as const, text: msg.content }]
       : [],
     id: `msg-${nextId++}`,
     createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-    ...(msg.role === 'assistant'
-      ? { status: msg.content === '' ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const } }
-      : {}),
   };
 }
 

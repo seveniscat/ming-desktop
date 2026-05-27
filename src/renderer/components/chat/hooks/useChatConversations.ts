@@ -7,7 +7,14 @@ export function useChatConversations() {
   const activeConversationRef = useRef<string | null>(null);
 
   const normalizeMessages = (items: any[]): Message[] =>
-    items.filter((m: any) => m.role !== 'system');
+    items
+      .filter((m: any) => m.role !== 'system')
+      .map((m: any) => ({
+        role: m.role,
+        content: m.content,
+        reasoningContent: m.reasoning_content || undefined,
+        timestamp: m.timestamp,
+      }));
 
   const loadConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
     const msgs = await window.electronAPI.conversations.messages(conversationId);

@@ -188,7 +188,7 @@ export class AgentManager extends EventEmitter {
 
       // Save assistant response to DB
       db.prepare(`
-        INSERT INTO chat_messages (agent_id, role, content) VALUES (?, 'assistant', ?)
+        INSERT INTO chat_messages (agent_id, role, content, reasoning_content) VALUES (?, 'assistant', ?, NULL)
       `).run(agentId, response);
 
       this.emit('agent-message', { agentId, message: { role: 'assistant', content: response, timestamp: new Date().toISOString() } });
@@ -265,15 +265,16 @@ export class AgentManager extends EventEmitter {
     }
   }
 
-  getChatHistory(agentId: string): ChatMessage[] {
+  getChatHistory(agentId: string): (ChatMessage & { reasoning_content?: string })[] {
     const db = getDatabase();
     const rows = db.prepare(`
-      SELECT role, content, timestamp FROM chat_messages
+      SELECT role, content, reasoning_content, timestamp FROM chat_messages
       WHERE agent_id = ? ORDER BY timestamp ASC
     `).all(agentId) as any[];
     return rows.map(r => ({
       role: r.role,
       content: r.content,
+      reasoning_content: r.reasoning_content || undefined,
       timestamp: r.timestamp
     }));
   }
@@ -317,15 +318,16 @@ export class AgentManager extends EventEmitter {
     }));
   }
 
-  getConversationMessages(conversationId: string): ChatMessage[] {
+  getConversationMessages(conversationId: string): (ChatMessage & { reasoning_content?: string })[] {
     const db = getDatabase();
     const rows = db.prepare(`
-      SELECT role, content, timestamp FROM chat_messages
+      SELECT role, content, reasoning_content, timestamp FROM chat_messages
       WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 100
     `).all(conversationId) as any[];
     return rows.map(r => ({
       role: r.role,
       content: r.content,
+      reasoning_content: r.reasoning_content || undefined,
       timestamp: r.timestamp
     }));
   }

@@ -215,6 +215,7 @@ export interface StreamChunk {
 export interface StreamEnd {
   conversationId: string;
   fullContent: string;
+  reasoningContent?: string;
   usage?: {
     promptTokens?: number;
     completionTokens?: number;

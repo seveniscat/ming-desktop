@@ -122,6 +122,17 @@ export function useChatMessages({
       removeError();
       removeToolEvent();
       if (data.conversationId !== convId) return;
+      // Attach reasoning content from the completed stream
+      if (data.reasoningContent) {
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.role === 'assistant') {
+            updated[updated.length - 1] = { ...last, reasoningContent: data.reasoningContent };
+          }
+          return updated;
+        });
+      }
       setIsLoading(false);
       setExecutionState(prev => ({
         ...prev,

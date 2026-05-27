@@ -85,11 +85,11 @@ export class ChatService {
         this.recordDebugEvent?.({ ...event, conversationId }, webContents);
       },
       onEnd: (result) => {
-        db.prepare(`INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'assistant', ?, ?)`)
-          .run(agentId || null, result.fullContent, conversationId);
+        db.prepare(`INSERT INTO chat_messages (agent_id, role, content, reasoning_content, conversation_id) VALUES (?, 'assistant', ?, ?, ?)`)
+          .run(agentId || null, result.fullContent, result.reasoningContent || null, conversationId);
         db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
         send(IPCChannels.CONVERSATION_STREAM_END, {
-          conversationId, fullContent: result.fullContent, usage: result.usage,
+          conversationId, fullContent: result.fullContent, reasoningContent: result.reasoningContent, usage: result.usage,
         });
         this.activeStreams.delete(conversationId);
       },
