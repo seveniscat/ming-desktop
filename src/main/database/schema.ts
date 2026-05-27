@@ -488,4 +488,38 @@ export function runMigrations(): void {
     `);
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration18Name);
   }
+
+  // Migration: add FTS5 index for memory search
+  const migration19Name = 'add-memories-fts';
+  const applied19 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration19Name);
+  if (!applied19) {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        content,
+        content='memories',
+        content_rowid='rowid'
+      );
+
+      -- Populate existing data
+      INSERT INTO memories_fts(rowid, content)
+        SELECT rowid, content FROM memories;
+
+      -- Keep FTS in sync on INSERT
+      CREATE TRIGGER IF NOT EXISTS memories_fts_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+
+      -- Keep FTS in sync on DELETE
+      CREATE TRIGGER IF NOT EXISTS memories_fts_ad AFTER DELETE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+      END;
+
+      -- Keep FTS in sync on UPDATE
+      CREATE TRIGGER IF NOT EXISTS memories_fts_au AFTER UPDATE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+        INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+    `);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration19Name);
+  }
 }
