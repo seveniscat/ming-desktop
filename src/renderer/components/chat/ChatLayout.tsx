@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { Cpu, X, Square } from 'lucide-react';
+import type { MemorySuggestionEvent } from './assistant-ui/useIpcChatRuntime';
+import MemorySuggestCard from './MemorySuggestCard';
 import { useChatConversations } from './hooks/useChatConversations';
 import { useExecutionState } from './hooks/useExecutionState';
 import { useSlashCommands } from './hooks/useSlashCommands';
@@ -52,6 +54,26 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeSkills, setActiveSkills] = useState<Map<string, string[]>>(new Map());
+
+  // --- Memory suggestion state ---
+  const [pendingMemorySuggestion, setPendingMemorySuggestion] = useState<MemorySuggestionEvent | null>(null);
+
+  const handleMemorySuggestion = useCallback((suggestion: MemorySuggestionEvent) => {
+    setPendingMemorySuggestion(suggestion);
+  }, []);
+
+  const handleMemoryConfirm = useCallback(async (data: { content: string; category: string }) => {
+    try {
+      await window.electronAPI.memories.create({ content: data.content, category: data.category, source: 'agent_suggested' });
+    } catch (error) {
+      console.error('Failed to save memory:', error);
+    }
+    setPendingMemorySuggestion(null);
+  }, []);
+
+  const handleMemoryDismiss = useCallback(() => {
+    setPendingMemorySuggestion(null);
+  }, []);
 
   // --- Skill management ---
   const activateSkill = useCallback((convId: string, skillId: string) => {
@@ -209,6 +231,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     setIsRunning: setIsLoading,
     selectedModel,
     activeSkillIds,
+    onMemorySuggestion: handleMemorySuggestion,
   });
 
   // --- Load initial data ---
@@ -388,6 +411,17 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
             <div className="flex-1 min-h-0">
               <AssistantThread commands={commands} />
             </div>
+
+            {/* Memory suggestion card */}
+            {pendingMemorySuggestion && (
+              <div className="px-4 pb-2">
+                <MemorySuggestCard
+                  suggestion={pendingMemorySuggestion}
+                  onConfirm={handleMemoryConfirm}
+                  onDismiss={handleMemoryDismiss}
+                />
+              </div>
+            )}
 
             {/* Execution debug panel */}
             {executionState.steps.length > 0 && (

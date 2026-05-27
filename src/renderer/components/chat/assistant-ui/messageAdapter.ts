@@ -4,16 +4,26 @@ import type { Message } from '../types';
 let nextId = 1;
 
 /**
+ * Strip <think>...</think> tags from content. These are inserted by the backend
+ * when merging reasoning_content into the stored message, but should not be
+ * rendered as plain text — assistant-ui has dedicated reasoning parts for that.
+ */
+function stripThinkTags(content: string): string {
+  return content.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+}
+
+/**
  * Convert a native Message to assistant-ui's ThreadMessageLike format.
  *
  * Our format: { role, content, timestamp? }
  * assistant-ui format: { role, content: TextMessagePart[] | string, id?, createdAt?, status? }
  */
 export function toThreadMessageLike(msg: Message): ThreadMessageLike {
+  const displayContent = msg.role === 'assistant' ? stripThinkTags(msg.content) : msg.content;
   return {
     role: msg.role,
-    content: msg.content
-      ? [{ type: 'text' as const, text: msg.content }]
+    content: displayContent
+      ? [{ type: 'text' as const, text: displayContent }]
       : [],
     id: `msg-${nextId++}`,
     createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),

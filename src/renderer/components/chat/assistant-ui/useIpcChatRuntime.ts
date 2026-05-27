@@ -11,6 +11,12 @@ import {
   appendStreamError,
 } from './messageAdapter';
 
+export interface MemorySuggestionEvent {
+  content: string;
+  category: string;
+  reason: string;
+}
+
 interface UseIpcChatRuntimeOptions {
   /** Current conversation ID (null = new conversation) */
   conversationId: string | null;
@@ -28,6 +34,8 @@ interface UseIpcChatRuntimeOptions {
   selectedModel: string | null;
   /** Active skill IDs for the current conversation */
   activeSkillIds: string[];
+  /** Called when the agent suggests a memory via suggest_memory tool */
+  onMemorySuggestion?: (suggestion: MemorySuggestionEvent) => void;
 }
 
 /**
@@ -49,6 +57,7 @@ export function useIpcChatRuntime({
   setIsRunning,
   selectedModel,
   activeSkillIds,
+  onMemorySuggestion,
 }: UseIpcChatRuntimeOptions) {
   // Track the active streaming conversation so IPC callbacks can filter
   const activeConvRef = useRef<string | null>(null);
@@ -132,9 +141,20 @@ export function useIpcChatRuntime({
       );
 
       const removeToolEvent =
-        window.electronAPI.conversations.onStreamToolEvent((_data) => {
-          // Tool events are currently informational only;
-          // assistant-ui tool-call rendering will be handled in a future iteration.
+        window.electronAPI.conversations.onStreamToolEvent((data) => {
+          if (data.conversationId !== convId) return;
+          if (data.event === 'tool_result' && data.toolName === 'suggest_memory') {
+            try {
+              const parsed = JSON.parse(data.result);
+              if (parsed.suggested && parsed.memory) {
+                onMemorySuggestion?.({
+                  content: parsed.memory.content,
+                  category: parsed.memory.category,
+                  reason: parsed.memory.reason || '',
+                });
+              }
+            } catch {}
+          }
         });
 
       // Send the message via IPC
@@ -146,7 +166,7 @@ export function useIpcChatRuntime({
         activeSkillIds.length > 0 ? activeSkillIds : undefined,
       );
     },
-    [conversationId, setConversationId, setMessages, setIsRunning, selectedModel, activeSkillIds],
+    [conversationId, setConversationId, setMessages, setIsRunning, selectedModel, activeSkillIds, onMemorySuggestion],
   );
 
   // --- onCancel: abort the current stream ---
