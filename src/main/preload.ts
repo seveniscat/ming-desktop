@@ -225,6 +225,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     update: (id: string, data: any) => ipcRenderer.invoke(IPCChannels.MEMORY_UPDATE, id, data),
     delete: (id: string) => ipcRenderer.invoke(IPCChannels.MEMORY_DELETE, id),
     preview: () => ipcRenderer.invoke(IPCChannels.MEMORY_PREVIEW),
+    search: (query: string, limit?: number) => ipcRenderer.invoke(IPCChannels.MEMORY_SEARCH, query, limit),
   },
 });
 
@@ -357,5 +358,6 @@ export interface ElectronAPI {
     update: (id: string, data: any) => Promise<any>;
     delete: (id: string) => Promise<void>;
     preview: () => Promise<{ text: string; tokens: number }>;
+    search: (query: string, limit?: number) => Promise<any[]>;
   };
 }

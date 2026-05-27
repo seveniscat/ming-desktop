@@ -133,4 +133,5 @@ export enum IPCChannels {
   MEMORY_UPDATE = 'memory:update',
   MEMORY_DELETE = 'memory:delete',
   MEMORY_PREVIEW = 'memory:preview',
+  MEMORY_SEARCH = 'memory:search',
 }

@@ -81,6 +81,8 @@ export default function MemoryPage() {
   const [formCategory, setFormCategory] = useState('profile');
   const [loading, setLoading] = useState(true);
   const [recallQuery, setRecallQuery] = useState('');
+  const [recallResults, setRecallResults] = useState<any[] | null>(null);
+  const [recallSearching, setRecallSearching] = useState(false);
 
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const isDragging = useRef(false);
@@ -115,6 +117,27 @@ export default function MemoryPage() {
   useEffect(() => {
     loadPreview();
   }, [memories, loadPreview]);
+
+  // FTS5 recall search
+  useEffect(() => {
+    if (!recallQuery.trim()) {
+      setRecallResults(null);
+      return;
+    }
+    setRecallSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await window.electronAPI.memories.search(recallQuery.trim(), 10);
+        setRecallResults(results || []);
+      } catch (error) {
+        console.error('Recall search failed:', error);
+        setRecallResults([]);
+      } finally {
+        setRecallSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [recallQuery]);
 
   const selectedMemory = memories.find((m) => m.id === selectedId) || null;
 
@@ -518,7 +541,7 @@ export default function MemoryPage() {
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Simulate a query to test recall..."
+                    placeholder="Type to test FTS5 recall..."
                     value={recallQuery}
                     onChange={(e) => setRecallQuery(e.target.value)}
                     className="pl-8 h-9 text-sm"
@@ -527,12 +550,12 @@ export default function MemoryPage() {
 
                 <ScrollArea className="flex-1">
                   <div className="space-y-1.5">
-                    {activeMemories.length === 0 ? (
+                    {(recallResults !== null ? recallResults : activeMemories).length === 0 ? (
                       <div className="text-center text-sm text-muted-foreground py-8">
-                        No active memories
+                        {recallQuery.trim() ? 'No matching memories' : 'No active memories'}
                       </div>
                     ) : (
-                      activeMemories.map((memory) => (
+                      (recallResults !== null ? recallResults : activeMemories).map((memory) => (
                         <div
                           key={memory.id}
                           className="rounded-lg border border-[hsl(var(--border))] p-3 space-y-1.5"
@@ -568,7 +591,11 @@ export default function MemoryPage() {
                 </ScrollArea>
 
                 <div className="text-xs text-muted-foreground pt-1">
-                  {activeMemories.length} active memories (MVP: showing all, no semantic search)
+                  {recallSearching
+                    ? 'Searching...'
+                    : recallResults !== null
+                      ? `${recallResults.length} results for "${recallQuery.trim()}"`
+                      : `${activeMemories.length} active memories (type to search)`}
                 </div>
               </div>
             </TabsContent>

@@ -120,6 +120,7 @@ interface Window {
       update: (id: string, data: any) => Promise<any>;
       delete: (id: string) => Promise<void>;
       preview: () => Promise<{ text: string; tokens: number }>;
+      search: (query: string, limit?: number) => Promise<any[]>;
     };
   };
 }

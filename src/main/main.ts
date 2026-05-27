@@ -931,6 +931,10 @@ function setupIPCHandlers(): void {
     };
   });
 
+  ipcMain.handle(IPCChannels.MEMORY_SEARCH, async (_, query: string, limit?: number) => {
+    return memoryManager.search(query, limit);
+  });
+
   Logger.info('IPC handlers registered');
 }
 
