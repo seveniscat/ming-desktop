@@ -49,6 +49,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { FC } from "react";
 
 interface ThreadProps {
@@ -77,7 +78,7 @@ export const Thread: FC<ThreadProps> = ({ commands }) => {
 
           <div
             data-slot="aui_message-group"
-            className="mb-10 flex flex-col gap-y-8 empty:hidden"
+            className="mb-10 flex flex-col gap-y-6 empty:hidden"
           >
             <ThreadPrimitive.Messages>
               {() => <ThreadMessage />}
@@ -161,9 +162,42 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
+const SlashCommandItem: FC<{
+  item: Unstable_TriggerItem;
+}> = ({ item }) => {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new MutationObserver(() => {
+      if (el.hasAttribute("data-highlighted")) {
+        el.scrollIntoView({ block: "nearest" });
+      }
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ["data-highlighted"] });
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverItem
+      ref={ref}
+      key={item.id}
+      item={item}
+      className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground cursor-pointer"
+    >
+      <span className="font-medium">{item.label ?? item.id}</span>
+      {item.description && (
+        <span className="text-muted-foreground text-xs truncate">{item.description}</span>
+      )}
+    </ComposerPrimitive.Unstable_TriggerPopoverItem>
+  );
+};
+
 const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
   const slash = unstable_useSlashCommandAdapter({
     commands: commands ?? [],
+    removeOnExecute: true,
   });
 
   return (
@@ -172,7 +206,7 @@ const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
         <ComposerPrimitive.Unstable_TriggerPopover
           char="/"
           {...slash}
-          className="z-50 max-h-64 w-72 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+          className="z-50 max-h-64 w-96 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
         >
           <ComposerPrimitive.Unstable_TriggerPopover.Action {...slash.action} />
           <ComposerPrimitive.Unstable_TriggerPopoverItems
@@ -180,16 +214,7 @@ const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
           >
             {(items: readonly Unstable_TriggerItem[]) =>
               items.map((item) => (
-                <ComposerPrimitive.Unstable_TriggerPopoverItem
-                  key={item.id}
-                  item={item}
-                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground cursor-pointer"
-                >
-                  <span className="font-medium">{item.label ?? item.id}</span>
-                  {item.description && (
-                    <span className="text-muted-foreground text-xs truncate">{item.description}</span>
-                  )}
-                </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                <SlashCommandItem key={item.id} item={item} />
               ))
             }
           </ComposerPrimitive.Unstable_TriggerPopoverItems>
@@ -263,7 +288,21 @@ const MessageError: FC = () => {
   );
 };
 
+const TypingIndicator: FC = () => {
+  return (
+    <div className="flex items-center gap-1 py-1">
+      <span className="aui-typing-dot size-1.5 rounded-full bg-muted-foreground/60" />
+      <span className="aui-typing-dot size-1.5 rounded-full bg-muted-foreground/60 [animation-delay:0.15s]" />
+      <span className="aui-typing-dot size-1.5 rounded-full bg-muted-foreground/60 [animation-delay:0.3s]" />
+    </div>
+  );
+};
+
 const AssistantMessage: FC = () => {
+  const createdAt = useAuiState((s) => s.message.createdAt);
+  const status = useAuiState((s) => s.message.status?.type);
+  const isRunning = status === "running";
+
   return (
     <MessagePrimitive.Root
       data-slot="aui_assistant-message-root"
@@ -271,65 +310,76 @@ const AssistantMessage: FC = () => {
       className="relative [contain-intrinsic-size:auto_300px] [content-visibility:auto]"
     >
       <div
-        data-slot="aui_assistant-message-content"
-        className="wrap-break-word px-2 text-foreground leading-relaxed"
+        data-slot="aui_assistant-message-bubble"
+        className="aui-assistant-bubble rounded-2xl bg-muted/50 px-4 py-3"
       >
-        <MessagePrimitive.GroupedParts
-          groupBy={(part) => {
-            if (part.type === "reasoning")
-              return ["group-chainOfThought", "group-reasoning"];
-            if (part.type === "tool-call") {
-              if (getMcpAppFromToolPart(part)) return null;
-              return ["group-chainOfThought", "group-tool"];
-            }
-            return null;
-          }}
+        <div
+          data-slot="aui_assistant-message-content"
+          className="wrap-break-word text-foreground leading-relaxed"
         >
-          {({ part, children }) => {
-            switch (part.type) {
-              case "group-chainOfThought":
-                return <div data-slot="aui_chain-of-thought">{children}</div>;
-              case "group-reasoning": {
-                const running = part.status.type === "running";
-                return (
-                  <ReasoningRoot defaultOpen={running}>
-                    <ReasoningTrigger active={running} />
-                    <ReasoningContent aria-busy={running}>
-                      <ReasoningText>{children}</ReasoningText>
-                    </ReasoningContent>
-                  </ReasoningRoot>
-                );
+          <MessagePrimitive.GroupedParts
+            groupBy={(part) => {
+              if (part.type === "reasoning")
+                return ["group-chainOfThought", "group-reasoning"];
+              if (part.type === "tool-call") {
+                if (getMcpAppFromToolPart(part)) return null;
+                return ["group-chainOfThought", "group-tool"];
               }
-              case "group-tool":
-                return (
-                  <ToolGroupRoot>
-                    <ToolGroupTrigger
-                      count={part.indices.length}
-                      active={part.status.type === "running"}
-                    />
-                    <ToolGroupContent>{children}</ToolGroupContent>
-                  </ToolGroupRoot>
-                );
-              case "text":
-                return <MarkdownText />;
-              case "reasoning":
-                return <Reasoning {...part} />;
-              case "tool-call":
-                return part.toolUI ?? <ToolFallback {...part} />;
-              default:
-                return null;
-            }
-          }}
-        </MessagePrimitive.GroupedParts>
-        <MessageError />
-      </div>
+              return null;
+            }}
+          >
+            {({ part, children }) => {
+              switch (part.type) {
+                case "group-chainOfThought":
+                  return <div data-slot="aui_chain-of-thought">{children}</div>;
+                case "group-reasoning": {
+                  const running = part.status.type === "running";
+                  return (
+                    <ReasoningRoot defaultOpen={running}>
+                      <ReasoningTrigger active={running} />
+                      <ReasoningContent aria-busy={running}>
+                        <ReasoningText>{children}</ReasoningText>
+                      </ReasoningContent>
+                    </ReasoningRoot>
+                  );
+                }
+                case "group-tool":
+                  return (
+                    <ToolGroupRoot>
+                      <ToolGroupTrigger
+                        count={part.indices.length}
+                        active={part.status.type === "running"}
+                      />
+                      <ToolGroupContent>{children}</ToolGroupContent>
+                    </ToolGroupRoot>
+                  );
+                case "text":
+                  return <MarkdownText />;
+                case "reasoning":
+                  return <Reasoning {...part} />;
+                case "tool-call":
+                  return part.toolUI ?? <ToolFallback {...part} />;
+                default:
+                  return null;
+              }
+            }}
+          </MessagePrimitive.GroupedParts>
+          {isRunning && <TypingIndicator />}
+          <MessageError />
+        </div>
 
-      <div
-        data-slot="aui_assistant-message-footer"
-        className="ms-2 flex items-center pt-1.5"
-      >
-        <BranchPicker />
-        <AssistantActionBar />
+        <div
+          data-slot="aui_assistant-message-footer"
+          className="flex items-center gap-1 pt-1.5"
+        >
+          <BranchPicker />
+          <AssistantActionBar />
+          <span className="ml-auto text-muted-foreground text-xs">
+            {createdAt instanceof Date
+              ? createdAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+              : null}
+          </span>
+        </div>
       </div>
     </MessagePrimitive.Root>
   );
@@ -384,27 +434,36 @@ const AssistantActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
+  const createdAt = useAuiState((s) => s.message.createdAt);
+
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
-      className="grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 [&:where(>*)]:col-start-2"
+      className="flex flex-col items-end gap-1 px-2"
       data-role="user"
     >
       <UserMessageAttachments />
 
-      <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-        <div className="aui-user-message-content wrap-break-word peer rounded-2xl bg-muted px-4 py-2.5 text-foreground empty:hidden">
-          <MessagePrimitive.Parts />
-        </div>
-        <div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">
+      <div className="aui-user-message-content-wrapper relative min-w-0 flex items-start gap-2">
+        <div className="aui-user-action-bar-wrapper pt-1 peer-empty:hidden">
           <UserActionBar />
+        </div>
+        <div className="aui-user-message-content wrap-break-word peer rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground empty:hidden">
+          <MessagePrimitive.Parts />
         </div>
       </div>
 
-      <BranchPicker
-        data-slot="aui_user-branch-picker"
-        className="col-span-full col-start-1 row-start-3 -me-1 justify-end"
-      />
+      <div className="flex items-center gap-1">
+        <BranchPicker
+          data-slot="aui_user-branch-picker"
+          className="-me-1 justify-end"
+        />
+        <span className="text-muted-foreground text-xs">
+          {createdAt instanceof Date
+            ? createdAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+            : null}
+        </span>
+      </div>
     </MessagePrimitive.Root>
   );
 };

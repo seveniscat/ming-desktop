@@ -26,8 +26,26 @@
   margin-bottom: 0.75rem;
 }
 
+[data-aui-message][data-aui-role="user"] {
+  align-self: flex-end;
+  max-width: 80%;
+}
+
 [data-aui-message][data-aui-role="assistant"] {
+  align-self: flex-start;
+  max-width: 85%;
   background: transparent;
+}
+
+/* ---------- Chat bubbles ---------- */
+.aui-assistant-bubble {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.5);
+  transition: background-color 0.15s ease;
+}
+
+.aui-assistant-bubble:hover {
+  background: hsl(var(--muted) / 0.7);
 }
 
 /* ---------- Message content text ---------- */
@@ -172,4 +190,14 @@
 [data-aui-suggestion]:hover {
   background: var(--surface-hover);
   border-color: hsl(var(--primary) / 0.3);
+}
+
+/* ---------- Typing indicator ---------- */
+@keyframes aui-typing-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.aui-typing-dot {
+  animation: aui-typing-bounce 1.2s ease-in-out infinite;
 }
