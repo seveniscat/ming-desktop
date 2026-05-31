@@ -1,6 +1,4 @@
-import { ChatMessage, ToolDefinition, ToolCall } from '../../../shared/types';
-
-export type ModuleType = 'openai-compatible' | 'anthropic' | 'claude-agent-sdk';
+import { ChatMessage, ToolDefinition, ToolCall, type ModuleType } from '../../../shared/types';
 
 export interface ProviderPreset {
   id: string;

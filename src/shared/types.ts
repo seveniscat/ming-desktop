@@ -139,11 +139,14 @@ export interface ClaudeAgentSDKConfig {
   cwd?: string;
 }
 
+export type ModuleType = 'openai-compatible' | 'anthropic' | 'claude-agent-sdk';
+
 // LLM Provider 相关类型
 export interface LLMProvider {
   id: string;
   name: string;
-  type: 'openai' | 'anthropic' | 'local' | 'custom' | 'qwen' | 'deepseek' | 'claude-agent-sdk';
+  presetId: string;
+  moduleType: ModuleType;
   apiKey?: string;
   baseURL?: string;
   models: string[];
@@ -154,7 +157,8 @@ export interface LLMProvider {
 
 export interface LLMProviderConfig {
   name: string;
-  type: LLMProvider['type'];
+  presetId: string;
+  moduleType: ModuleType;
   apiKey?: string;
   baseURL?: string;
   models?: string[];

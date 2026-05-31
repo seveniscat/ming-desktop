@@ -28,6 +28,7 @@ export enum IPCChannels {
   LLM_REMOVE_PROVIDER = 'llm:remove-provider',
   LLM_UPDATE_PROVIDER = 'llm:update-provider',
   LLM_FETCH_MODELS = 'llm:fetch-models',
+  LLM_TEST_CONNECTION = 'llm:test-connection',
 
   // 执行服务相关
   EXECUTE_COMMAND = 'executor:execute-command',
