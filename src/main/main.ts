@@ -88,7 +88,7 @@ function createWindow(): void {
 function loadRendererWindow(window: BrowserWindow, view?: string): void {
   if (isDev) {
     const suffix = view ? `?view=${encodeURIComponent(view)}` : '';
-    window.loadURL(`http://localhost:5174${suffix}`);
+    window.loadURL(`http://localhost:5188${suffix}`);
   } else {
     window.loadFile(path.join(__dirname, '../renderer/index.html'), {
       query: view ? { view } : undefined,
@@ -414,6 +414,10 @@ function setupIPCHandlers(): void {
 
   ipcMain.handle(IPCChannels.LLM_FETCH_MODELS, async (_, providerId: string) => {
     return llmManager.fetchModels(providerId);
+  });
+
+  ipcMain.handle(IPCChannels.LLM_TEST_CONNECTION, async (_, providerId: string) => {
+    return llmManager.testConnection(providerId);
   });
 
   // 执行服务相关
