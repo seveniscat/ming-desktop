@@ -51,6 +51,7 @@ interface Window {
       removeProvider: (providerId: string) => Promise<any>;
       updateProvider: (providerId: string, updates: any) => Promise<any>;
       fetchModels: (providerId: string) => Promise<any>;
+      testConnection: (providerId: string) => Promise<{ success: boolean; message: string }>;
     };
     executor: {
       executeCommand: (command: string, options?: any) => Promise<any>;
