@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, RotateCcw, Key, Palette, Globe } from 'lucide-react';
+import { Save, RotateCcw, Key, Palette, Globe, ChevronRight } from 'lucide-react';
 import LLMConfiguration from './LLMConfiguration';
 import { useTheme } from './ThemeProvider';
 import { themePresets } from '@/lib/themes';
@@ -10,11 +10,14 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { cn } from '@/lib/utils';
 
+type SubPage = 'llm' | null;
+
 export default function Settings() {
   const { theme, setTheme: setCtxTheme, colorTheme, setColorTheme } = useTheme();
   const [language, setLanguage] = useState('zh-CN');
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [subPage, setSubPage] = useState<SubPage>(null);
 
   useEffect(() => {
     loadSettings();
@@ -55,16 +58,18 @@ export default function Settings() {
     }
   };
 
+  if (subPage === 'llm') {
+    return <LLMConfiguration onBack={() => setSubPage(null)} />;
+  }
+
   return (
     <div className="h-full overflow-y-auto p-8">
       <div className="max-w-3xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-1 text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground">Configure your 铭</p>
         </div>
 
-        {/* Appearance */}
         <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -92,7 +97,6 @@ export default function Settings() {
                   </SelectContent>
                 </Select>
               </div>
-
               <div>
                 <Label className="mb-2 block">Color Theme</Label>
                 <div className="grid grid-cols-5 gap-2">
@@ -116,7 +120,6 @@ export default function Settings() {
                   ))}
                 </div>
               </div>
-
               <div>
                 <Label className="mb-2 block">Language</Label>
                 <Select value={language} onValueChange={(v) => setLanguage(v)}>
@@ -133,7 +136,6 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* General */}
         <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -157,25 +159,29 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* LLM Configuration */}
-        <Card className="mb-4 rounded-xl bg-[var(--surface)] border-[hsl(var(--border))]">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-warning/10">
-                <Key size={18} className="text-warning" />
+        <button
+          type="button"
+          onClick={() => setSubPage('llm')}
+          className="w-full text-left mb-4"
+        >
+          <Card className="rounded-xl bg-[var(--surface)] border-[hsl(var(--border))] hover:border-primary/50 transition-colors">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-warning/10">
+                    <Key size={18} className="text-warning" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">LLM Configuration</CardTitle>
+                    <CardDescription>API keys, models, and default provider for Agent chat</CardDescription>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-muted-foreground" />
               </div>
-              <div>
-                <CardTitle className="text-base">LLM Configuration</CardTitle>
-                <CardDescription>API keys, models, and default provider for Agent chat</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <LLMConfiguration />
-          </CardContent>
-        </Card>
+            </CardHeader>
+          </Card>
+        </button>
 
-        {/* Actions */}
         <div className="flex gap-3 justify-end pb-8">
           <Button
             variant="secondary"
