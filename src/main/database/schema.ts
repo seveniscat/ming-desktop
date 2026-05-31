@@ -522,4 +522,33 @@ export function runMigrations(): void {
     `);
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration19Name);
   }
+
+  // Migration: modular provider system — add preset_id, relax type constraint
+  const migration20Name = 'modular-provider-system';
+  const applied20 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration20Name);
+  if (!applied20) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS llm_providers_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        preset_id TEXT NOT NULL DEFAULT '',
+        module_type TEXT NOT NULL,
+        api_key TEXT,
+        base_url TEXT,
+        models TEXT DEFAULT '[]',
+        enabled INTEGER DEFAULT 1,
+        enabled_models TEXT DEFAULT '[]',
+        sdk_config TEXT DEFAULT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO llm_providers_new (id, name, preset_id, module_type, api_key, base_url, models, enabled, enabled_models, sdk_config, created_at, updated_at)
+        SELECT id, name, type, type, api_key, base_url, models, enabled, enabled_models, sdk_config, created_at, updated_at FROM llm_providers;
+      UPDATE llm_providers_new SET module_type = 'openai-compatible' WHERE module_type IN ('openai','custom','qwen','deepseek','local');
+      UPDATE llm_providers_new SET preset_id = 'custom' WHERE preset_id = 'custom';
+      DROP TABLE llm_providers;
+      ALTER TABLE llm_providers_new RENAME TO llm_providers;
+    `);
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration20Name);
+  }
 }
