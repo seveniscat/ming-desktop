@@ -15,6 +15,7 @@ interface Window {
       update: (skillId: string, updates: any) => Promise<any>;
       delete: (skillId: string) => Promise<any>;
       syncLocal: () => Promise<any>;
+      importZip: (zipPath: string) => Promise<{ skillId: string; skillName: string }>;
     };
     prompts: {
       create: (config: any) => Promise<any>;

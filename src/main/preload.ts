@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (skillId: string) =>
       ipcRenderer.invoke(IPCChannels.SKILL_DELETE, skillId),
     syncLocal: () => ipcRenderer.invoke(IPCChannels.SKILL_SYNC_LOCAL),
+    importZip: (zipPath: string) => ipcRenderer.invoke(IPCChannels.SKILL_IMPORT_ZIP, zipPath),
   },
 
   // Prompt API
@@ -251,6 +252,7 @@ export interface ElectronAPI {
     update: (skillId: string, updates: any) => Promise<void>;
     delete: (skillId: string) => Promise<void>;
     syncLocal: () => Promise<any>;
+    importZip: (zipPath: string) => Promise<{ skillId: string; skillName: string }>;
     getFiles: (skillId: string) => Promise<any[]>;
     readFile: (skillId: string, filePath: string) => Promise<string>;
     writeFile: (skillId: string, filePath: string, content: string) => Promise<void>;

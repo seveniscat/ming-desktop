@@ -13,6 +13,7 @@ export enum IPCChannels {
   SKILL_DELETE = 'skill:delete',
   SKILL_UPDATE = 'skill:update',
   SKILL_SYNC_LOCAL = 'skill:sync-local',
+  SKILL_IMPORT_ZIP = 'skill:import-zip',
   SKILL_GET_FILES = 'skill:get-files',
   SKILL_READ_FILE = 'skill:read-file',
   SKILL_WRITE_FILE = 'skill:write-file',

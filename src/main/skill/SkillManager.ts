@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFile } from 'child_process';
 import { app } from 'electron';
 import { Skill, SkillConfig, SkillParameter, SkillSyncResult, SkillFile } from '../../shared/types';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
@@ -299,6 +300,96 @@ export class SkillManager extends EventEmitter {
     }
 
     return files;
+  }
+
+  /**
+   * Import a skill from a ZIP file.
+   * Unzips into the skills directory and registers it.
+   * The ZIP should contain either:
+   *   - A single folder with SKILL.md inside, OR
+   *   - SKILL.md at the root (we wrap it in a folder)
+   */
+  async importZip(zipPath: string): Promise<{ skillId: string; skillName: string }> {
+    if (!fs.existsSync(zipPath)) throw new Error('ZIP file not found');
+
+    const skillsDir = this.getSkillsRoot();
+    const tmpDir = path.join(skillsDir, `.tmp-import-${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    try {
+      // Unzip using system unzip command (available on macOS/Linux)
+      await new Promise<void>((resolve, reject) => {
+        execFile('unzip', ['-o', '-q', zipPath, '-d', tmpDir], (error) => {
+          if (error) reject(new Error(`Failed to unzip: ${error.message}`));
+          else resolve();
+        });
+      });
+
+      // Find SKILL.md in the extracted content
+      const skillSourceDir = this.findSkillSourceDir(tmpDir);
+      if (!skillSourceDir) {
+        throw new Error('No SKILL.md found in ZIP. Make sure the ZIP contains a valid skill folder.');
+      }
+
+      // Determine skill name from SKILL.md frontmatter or folder name
+      const skillMdContent = fs.readFileSync(path.join(skillSourceDir, 'SKILL.md'), 'utf-8');
+      const { metadata } = this.parseFrontmatter(skillMdContent);
+      const skillName = metadata.name || path.basename(skillSourceDir);
+
+      // Generate a unique folder name
+      const slug = skillName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const targetDir = path.join(skillsDir, `imported-${slug}-${randomUUID().slice(0, 6)}`);
+
+      // Move skill folder to final location
+      fs.renameSync(skillSourceDir, targetDir);
+
+      // Sync to pick up the new skill
+      await this.syncLocalSkills();
+
+      // Find the newly imported skill by folder path
+      const imported = Array.from(this.skills.values()).find(s => s.folderPath === targetDir);
+      if (!imported) throw new Error('Failed to register imported skill');
+
+      this.emit('skill-imported', imported);
+      Logger.info(`Skill imported from ZIP: ${imported.name}`);
+
+      return { skillId: imported.id, skillName: imported.name };
+    } finally {
+      // Clean up temp directory
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Find the directory containing SKILL.md in the extracted ZIP.
+   * Handles both:
+   *   - ZIP with a single folder containing SKILL.md
+   *   - ZIP with SKILL.md at root level
+   */
+  private findSkillSourceDir(extractDir: string): string | null {
+    // Check if SKILL.md is directly in the extract dir
+    if (fs.existsSync(path.join(extractDir, 'SKILL.md'))) {
+      return extractDir;
+    }
+
+    // Look for a single subdirectory with SKILL.md
+    const entries = fs.readdirSync(extractDir, { withFileTypes: true });
+    const dirs = entries.filter(e => e.isDirectory() && e.name !== '__MACOSX' && !e.name.startsWith('.'));
+
+    if (dirs.length === 1) {
+      const subDir = path.join(extractDir, dirs[0].name);
+      if (fs.existsSync(path.join(subDir, 'SKILL.md'))) {
+        return subDir;
+      }
+    }
+
+    // Search deeper for SKILL.md
+    for (const dir of dirs) {
+      const result = this.findSkillSourceDir(path.join(extractDir, dir.name));
+      if (result) return result;
+    }
+
+    return null;
   }
 
   async syncLocalSkills(): Promise<SkillSyncResult> {

@@ -264,6 +264,10 @@ function setupIPCHandlers(): void {
     return skillManager.syncLocalSkills();
   });
 
+  ipcMain.handle(IPCChannels.SKILL_IMPORT_ZIP, async (_, zipPath: string) => {
+    return skillManager.importZip(zipPath);
+  });
+
   ipcMain.handle(IPCChannels.SKILL_GET_FILES, async (_, skillId: string) => {
     return skillManager.getSkillFiles(skillId);
   });
