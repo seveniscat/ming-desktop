@@ -3,12 +3,13 @@ import {
   useExternalStoreRuntime,
   type ExternalStoreAdapter,
 } from '@assistant-ui/react';
-import type { Message } from '../types';
+import type { Message, ToolCallRecord } from '../types';
 import {
   toThreadMessageLike,
   createEmptyAssistantMessage,
   appendStreamText,
   appendStreamError,
+  upsertToolCall,
 } from './messageAdapter';
 
 export interface MemorySuggestionEvent {
@@ -154,6 +155,8 @@ export function useIpcChatRuntime({
       const removeToolEvent =
         window.electronAPI.conversations.onStreamToolEvent((data) => {
           if (data.conversationId !== convId) return;
+
+          // Handle suggest_memory as a special case (triggers memory suggestion UI)
           if (data.event === 'tool_result' && data.toolName === 'suggest_memory') {
             try {
               const parsed = JSON.parse(data.result);
@@ -165,6 +168,59 @@ export function useIpcChatRuntime({
                 });
               }
             } catch {}
+          }
+
+          // Process all tool events for display in chat bubbles
+          if (data.event === 'tool_start' && data.toolName) {
+            const record: ToolCallRecord = {
+              id: `${data.toolName}-${data.timestamp}`,
+              toolName: data.toolName,
+              args: data.args,
+              status: 'running',
+              startedAt: data.timestamp,
+            };
+            setMessages((prev) => upsertToolCall(prev, record));
+          } else if (data.event === 'tool_result' && data.toolName) {
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last?.role === 'assistant' && last.toolCalls?.length) {
+                const idx = last.toolCalls.findIndex(
+                  (tc) => tc.toolName === data.toolName && tc.status === 'running',
+                );
+                if (idx >= 0) {
+                  const updated = { ...last, toolCalls: [...last.toolCalls] };
+                  updated.toolCalls[idx] = {
+                    ...updated.toolCalls[idx],
+                    status: 'complete' as const,
+                    result: data.result,
+                    duration: data.duration,
+                  };
+                  msgs[msgs.length - 1] = updated;
+                }
+              }
+              return msgs;
+            });
+          } else if (data.event === 'tool_error' && data.toolName) {
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last?.role === 'assistant' && last.toolCalls?.length) {
+                const idx = last.toolCalls.findIndex(
+                  (tc) => tc.toolName === data.toolName && tc.status === 'running',
+                );
+                if (idx >= 0) {
+                  const updated = { ...last, toolCalls: [...last.toolCalls] };
+                  updated.toolCalls[idx] = {
+                    ...updated.toolCalls[idx],
+                    status: 'incomplete' as const,
+                    error: data.error,
+                  };
+                  msgs[msgs.length - 1] = updated;
+                }
+              }
+              return msgs;
+            });
           }
         });
 

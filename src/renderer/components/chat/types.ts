@@ -15,10 +15,23 @@ export interface Conversation {
   updatedAt: string;
 }
 
+export interface ToolCallRecord {
+  id: string;
+  toolName: string;
+  args?: Record<string, any>;
+  argsText?: string;
+  result?: string;
+  error?: string;
+  status: 'running' | 'complete' | 'incomplete';
+  startedAt?: number;
+  duration?: number;
+}
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
   reasoningContent?: string;
+  toolCalls?: ToolCallRecord[];
   timestamp?: string;
 }
 
