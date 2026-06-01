@@ -264,6 +264,22 @@ function setupIPCHandlers(): void {
     return skillManager.syncLocalSkills();
   });
 
+  ipcMain.handle(IPCChannels.SKILL_GET_FILES, async (_, skillId: string) => {
+    return skillManager.getSkillFiles(skillId);
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_READ_FILE, async (_, skillId: string, filePath: string) => {
+    return skillManager.readSkillFile(skillId, filePath);
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_WRITE_FILE, async (_, skillId: string, filePath: string, content: string) => {
+    return skillManager.writeSkillFile(skillId, filePath, content);
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_DELETE_FILE, async (_, skillId: string, filePath: string) => {
+    return skillManager.deleteSkillFile(skillId, filePath);
+  });
+
   // Prompt 相关
   ipcMain.handle(IPCChannels.PROMPT_CREATE, async (_, config: any) => {
     return promptTemplateManager.createPrompt(config);
