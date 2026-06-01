@@ -33,23 +33,29 @@ export interface Skill {
   id: string;
   name: string;
   description: string;
-  prompt: string;
+  folderPath: string;
   enabled: boolean;
   autoMessage?: string;
   parameters?: SkillParameter[];
-  sourcePath?: string;
   sourceType?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface SkillFile {
+  name: string;
+  path: string;
+  content?: string;
+  size: number;
+  modifiedAt: string;
+  isDirectory: boolean;
+}
+
 export interface SkillConfig {
   name: string;
   description?: string;
-  prompt: string;
+  folderPath?: string;
   enabled?: boolean;
-  sourcePath?: string;
-  sourceType?: string;
 }
 
 export interface SkillSyncResult {
