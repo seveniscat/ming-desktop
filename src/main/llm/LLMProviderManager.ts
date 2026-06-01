@@ -8,8 +8,6 @@ import { getModule, getPreset } from './providers/registry';
 import { StreamWithToolsResult } from './providers/types';
 import { ClaudeAgentSDKModule } from './providers/claude-agent-sdk';
 
-export { StreamWithToolsResult };
-
 export class LLMProviderManager extends EventEmitter {
   private providers: Map<string, LLMProvider> = new Map();
   private clients: Map<string, unknown> = new Map();
