@@ -141,10 +141,18 @@ export class ChatEngine {
     if (agent) {
       systemContent = agent.systemPrompt;
       if (activeSkills.length > 0) {
-        systemContent += '\n\n' + activeSkills.map(s => s.prompt).join('\n\n');
+        const prompts = this.getSkillPrompt
+          ? activeSkills.map(s => this.getSkillPrompt!(s.id)).filter(Boolean)
+          : activeSkills.map(s => s.prompt).filter(Boolean);
+        if (prompts.length > 0) {
+          systemContent += '\n\n' + prompts.join('\n\n');
+        }
       }
     } else if (activeSkills.length > 0) {
-      systemContent = activeSkills.map(s => s.prompt).join('\n\n');
+      const prompts = this.getSkillPrompt
+        ? activeSkills.map(s => this.getSkillPrompt!(s.id)).filter(Boolean)
+        : activeSkills.map(s => s.prompt).filter(Boolean);
+      systemContent = prompts.length > 0 ? prompts.join('\n\n') : 'You are a helpful assistant.';
     } else {
       systemContent = 'You are a helpful assistant.';
     }
@@ -199,4 +207,5 @@ export class ChatEngine {
 
     return results;
   }
+}
 }

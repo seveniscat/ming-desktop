@@ -246,6 +246,10 @@ export interface ElectronAPI {
     update: (skillId: string, updates: any) => Promise<void>;
     delete: (skillId: string) => Promise<void>;
     syncLocal: () => Promise<any>;
+    getFiles: (skillId: string) => Promise<any[]>;
+    readFile: (skillId: string, filePath: string) => Promise<string>;
+    writeFile: (skillId: string, filePath: string, content: string) => Promise<void>;
+    deleteFile: (skillId: string, filePath: string) => Promise<void>;
   };
   prompts: {
     create: (config: any) => Promise<string>;
@@ -360,6 +364,10 @@ export interface ElectronAPI {
     create: (data: any) => Promise<any>;
     update: (id: string, data: any) => Promise<any>;
     delete: (id: string) => Promise<void>;
+    preview: () => Promise<{ text: string; tokens: number }>;
+    search: (query: string, limit?: number) => Promise<any[]>;
+  };
+}
     preview: () => Promise<{ text: string; tokens: number }>;
     search: (query: string, limit?: number) => Promise<any[]>;
   };

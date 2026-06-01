@@ -9,12 +9,22 @@ import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PR
 import { Logger } from '../utils/Logger';
 import { getDatabase } from '../database/connection';
 
-interface LocalSkillCandidate extends Required<Pick<SkillConfig, 'name' | 'description' | 'prompt' | 'sourcePath' | 'sourceType'>> {
+interface LocalSkillCandidate {
   id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  folderPath: string;
+  sourceType: string;
 }
 
 export class SkillManager extends EventEmitter {
   private skills: Map<string, Skill> = new Map();
+  private skillsCache: Map<string, string> = new Map(); // skillId -> prompt content cache
+
+  getSkillsRoot(): string {
+    return path.join(app.getPath('userData'), 'skills');
+  }
 
   async initialize(): Promise<void> {
     Logger.info('Initializing Skill Manager...');
@@ -27,11 +37,10 @@ export class SkillManager extends EventEmitter {
         id: row.id,
         name: row.name,
         description: row.description || '',
-        prompt: row.prompt || '',
+        folderPath: row.folder_path || path.join(this.getSkillsRoot(), row.id),
         autoMessage: row.auto_message || undefined,
         parameters: row.parameters ? JSON.parse(row.parameters) : undefined,
         enabled: !!row.enabled,
-        sourcePath: row.source_path || undefined,
         sourceType: row.source_type || undefined,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -52,15 +61,49 @@ export class SkillManager extends EventEmitter {
     return this.skills.get(skillId);
   }
 
+  getSkillPrompt(skillId: string): string {
+    const skill = this.skills.get(skillId);
+    if (!skill) return '';
+
+    // Check cache first
+    if (this.skillsCache.has(skillId)) {
+      return this.skillsCache.get(skillId) || '';
+    }
+
+    try {
+      const skillMdPath = path.join(skill.folderPath, 'SKILL.md');
+      const content = fs.readFileSync(skillMdPath, 'utf-8');
+      const { body } = this.parseFrontmatter(content);
+      
+      // Cache it
+      this.skillsCache.set(skillId, body);
+      return body;
+    } catch (error) {
+      Logger.error(`Failed to read skill prompt: ${skillId}`, error);
+      return '';
+    }
+  }
+
   async createSkill(config: SkillConfig): Promise<string> {
+    const id = `skill-${randomUUID().slice(0, 8)}`;
+    const skillsDir = this.getSkillsRoot();
+    const folderPath = config.folderPath || path.join(skillsDir, id);
+
+    // Create folder
+    fs.mkdirSync(folderPath, { recursive: true });
+
+    // Create SKILL.md
+    const skillMdPath = path.join(folderPath, 'SKILL.md');
+    const frontmatter = `---\nname: ${config.name}\ndescription: ${config.description || ''}\n---\n\n`;
+    fs.writeFileSync(skillMdPath, frontmatter, 'utf-8');
+
     const skill: Skill = {
-      id: `skill-${randomUUID().slice(0, 8)}`,
+      id,
       name: config.name.trim(),
       description: config.description?.trim() ?? '',
-      prompt: config.prompt.trim(),
+      folderPath,
       enabled: config.enabled !== false,
-      sourcePath: config.sourcePath,
-      sourceType: config.sourceType,
+      sourceType: 'user',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -69,15 +112,14 @@ export class SkillManager extends EventEmitter {
 
     const db = getDatabase();
     db.prepare(`
-      INSERT INTO skills (id, name, description, prompt, enabled, source_path, source_type, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO skills (id, name, description, folder_path, enabled, source_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       skill.id,
       skill.name,
       skill.description,
-      skill.prompt,
+      skill.folderPath,
       skill.enabled ? 1 : 0,
-      skill.sourcePath || null,
       skill.sourceType || null,
       skill.createdAt,
       skill.updatedAt
@@ -98,25 +140,39 @@ export class SkillManager extends EventEmitter {
       ...updates,
       name: updates.name?.trim() ?? skill.name,
       description: updates.description?.trim() ?? skill.description,
-      prompt: updates.prompt?.trim() ?? skill.prompt,
-      sourcePath: updates.sourcePath ?? skill.sourcePath,
+      folderPath: updates.folderPath ?? skill.folderPath,
       sourceType: updates.sourceType ?? skill.sourceType,
       updatedAt: new Date().toISOString(),
     };
 
     this.skills.set(skillId, updated);
 
+    // Update SKILL.md frontmatter if name or description changed
+    if (updates.name || updates.description) {
+      try {
+        const skillMdPath = path.join(skill.folderPath, 'SKILL.md');
+        const content = fs.readFileSync(skillMdPath, 'utf-8');
+        const { body } = this.parseFrontmatter(content);
+        const frontmatter = `---\nname: ${updated.name}\ndescription: ${updated.description}\n---\n\n`;
+        fs.writeFileSync(skillMdPath, frontmatter + body, 'utf-8');
+        
+        // Clear cache
+        this.skillsCache.delete(skillId);
+      } catch (error) {
+        Logger.error(`Failed to update SKILL.md: ${skillId}`, error);
+      }
+    }
+
     const db = getDatabase();
     db.prepare(`
       UPDATE skills
-      SET name = ?, description = ?, prompt = ?, enabled = ?, source_path = ?, source_type = ?, parameters = ?, updated_at = ?
+      SET name = ?, description = ?, folder_path = ?, enabled = ?, source_type = ?, parameters = ?, updated_at = ?
       WHERE id = ?
     `).run(
       updated.name,
       updated.description,
-      updated.prompt,
+      updated.folderPath,
       updated.enabled ? 1 : 0,
-      updated.sourcePath || null,
       updated.sourceType || null,
       updated.parameters ? JSON.stringify(updated.parameters) : null,
       updated.updatedAt,
@@ -131,13 +187,118 @@ export class SkillManager extends EventEmitter {
     const skill = this.skills.get(skillId);
     if (!skill) return;
 
+    // Delete folder
+    try {
+      fs.rmSync(skill.folderPath, { recursive: true, force: true });
+    } catch (error) {
+      Logger.error(`Failed to delete skill folder: ${skill.folderPath}`, error);
+    }
+
     this.skills.delete(skillId);
+    this.skillsCache.delete(skillId);
 
     const db = getDatabase();
     db.prepare('DELETE FROM skills WHERE id = ?').run(skillId);
 
     this.emit('skill-deleted', skillId);
     Logger.info(`Skill deleted: ${skill.name}`);
+  }
+
+  // File management methods
+  getSkillFiles(skillId: string): SkillFile[] {
+    const skill = this.skills.get(skillId);
+    if (!skill) return [];
+
+    return this.listFilesRecursively(skill.folderPath, skill.folderPath);
+  }
+
+  async readSkillFile(skillId: string, filePath: string): Promise<string> {
+    const skill = this.skills.get(skillId);
+    if (!skill) throw new Error('Skill not found');
+
+    const absolutePath = path.join(skill.folderPath, filePath);
+    
+    // Security check: ensure file is within skill folder
+    if (!absolutePath.startsWith(skill.folderPath)) {
+      throw new Error('Invalid file path');
+    }
+
+    return fs.readFileSync(absolutePath, 'utf-8');
+  }
+
+  async writeSkillFile(skillId: string, filePath: string, content: string): Promise<void> {
+    const skill = this.skills.get(skillId);
+    if (!skill) throw new Error('Skill not found');
+
+    const absolutePath = path.join(skill.folderPath, filePath);
+    
+    // Security check
+    if (!absolutePath.startsWith(skill.folderPath)) {
+      throw new Error('Invalid file path');
+    }
+
+    // Create parent directories if needed
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, content, 'utf-8');
+
+    // Clear cache if writing SKILL.md
+    if (filePath === 'SKILL.md') {
+      this.skillsCache.delete(skillId);
+    }
+  }
+
+  async deleteSkillFile(skillId: string, filePath: string): Promise<void> {
+    const skill = this.skills.get(skillId);
+    if (!skill) throw new Error('Skill not found');
+
+    // Prevent deleting SKILL.md
+    if (filePath === 'SKILL.md') {
+      throw new Error('Cannot delete SKILL.md');
+    }
+
+    const absolutePath = path.join(skill.folderPath, filePath);
+    
+    // Security check
+    if (!absolutePath.startsWith(skill.folderPath)) {
+      throw new Error('Invalid file path');
+    }
+
+    fs.rmSync(absolutePath, { recursive: true, force: true });
+  }
+
+  private listFilesRecursively(dir: string, baseDir: string): SkillFile[] {
+    const files: SkillFile[] = [];
+    
+    if (!fs.existsSync(dir)) return files;
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(baseDir, fullPath);
+
+      if (entry.isDirectory()) {
+        files.push({
+          name: entry.name,
+          path: relativePath,
+          size: 0,
+          modifiedAt: fs.statSync(fullPath).mtime.toISOString(),
+          isDirectory: true,
+        });
+        files.push(...this.listFilesRecursively(fullPath, baseDir));
+      } else {
+        const stat = fs.statSync(fullPath);
+        files.push({
+          name: entry.name,
+          path: relativePath,
+          size: stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+          isDirectory: false,
+        });
+      }
+    }
+
+    return files;
   }
 
   async syncLocalSkills(): Promise<SkillSyncResult> {
@@ -155,47 +316,47 @@ export class SkillManager extends EventEmitter {
           ...existing,
           name: candidate.name,
           description: candidate.description,
-          prompt: candidate.prompt,
-          sourcePath: candidate.sourcePath,
+          folderPath: candidate.folderPath,
           sourceType: candidate.sourceType,
           updatedAt: now,
         };
         this.skills.set(next.id, next);
         db.prepare(`
           UPDATE skills
-          SET name = ?, description = ?, prompt = ?, source_path = ?, source_type = ?, updated_at = ?
+          SET name = ?, description = ?, folder_path = ?, source_type = ?, updated_at = ?
           WHERE id = ?
-        `).run(next.name, next.description, next.prompt, next.sourcePath, next.sourceType, next.updatedAt, next.id);
+        `).run(next.name, next.description, next.folderPath, next.sourceType, next.updatedAt, next.id);
         updated++;
       } else {
         const skill: Skill = {
           id: candidate.id,
           name: candidate.name,
           description: candidate.description,
-          prompt: candidate.prompt,
+          folderPath: candidate.folderPath,
           enabled: true,
-          sourcePath: candidate.sourcePath,
           sourceType: candidate.sourceType,
           createdAt: now,
           updatedAt: now,
         };
         this.skills.set(skill.id, skill);
         db.prepare(`
-          INSERT INTO skills (id, name, description, prompt, enabled, source_path, source_type, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO skills (id, name, description, folder_path, enabled, source_type, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           skill.id,
           skill.name,
           skill.description,
-          skill.prompt,
+          skill.folderPath,
           1,
-          skill.sourcePath,
           skill.sourceType,
           skill.createdAt,
           skill.updatedAt
         );
         created++;
       }
+      
+      // Clear cache for synced skills
+      this.skillsCache.delete(candidate.id);
     }
 
     Logger.info(`Synced local skills: ${created} created, ${updated} updated`);
@@ -222,17 +383,20 @@ export class SkillManager extends EventEmitter {
     const candidates: LocalSkillCandidate[] = [];
 
     for (const root of roots) {
-      for (const skillFile of this.findSkillFiles(root.dir, root.depth)) {
-        const sourcePath = path.resolve(skillFile);
-        if (seen.has(sourcePath)) continue;
-        seen.add(sourcePath);
+      for (const skillDir of this.findSkillDirectories(root.dir, root.depth)) {
+        const folderPath = path.resolve(skillDir);
+        if (seen.has(folderPath)) continue;
+        seen.add(folderPath);
 
         try {
-          const content = fs.readFileSync(sourcePath, 'utf-8');
-          const parsed = this.parseSkillFile(content, sourcePath);
+          const skillMdPath = path.join(folderPath, 'SKILL.md');
+          if (!fs.existsSync(skillMdPath)) continue;
+          
+          const content = fs.readFileSync(skillMdPath, 'utf-8');
+          const parsed = this.parseSkillFile(content, folderPath);
           candidates.push(parsed);
         } catch (error) {
-          Logger.error(`Failed to read local skill: ${sourcePath}`, error);
+          Logger.error(`Failed to read local skill: ${folderPath}`, error);
         }
       }
     }
@@ -240,47 +404,51 @@ export class SkillManager extends EventEmitter {
     return candidates.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  private findSkillFiles(rootDir: string, maxDepth: number): string[] {
+  private findSkillDirectories(rootDir: string, maxDepth: number): string[] {
     if (!fs.existsSync(rootDir) || maxDepth < 0) return [];
 
-    const files: string[] = [];
+    const dirs: string[] = [];
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(rootDir, { withFileTypes: true });
     } catch {
-      return files;
+      return dirs;
     }
 
     for (const entry of entries) {
       if (entry.name === 'node_modules' || entry.name === '.git') continue;
 
       const fullPath = path.join(rootDir, entry.name);
-      if (entry.isFile() && entry.name === 'SKILL.md') {
-        files.push(fullPath);
-      } else if (entry.isDirectory()) {
-        files.push(...this.findSkillFiles(fullPath, maxDepth - 1));
+      if (entry.isDirectory()) {
+        // Check if this directory contains SKILL.md
+        const skillMdPath = path.join(fullPath, 'SKILL.md');
+        if (fs.existsSync(skillMdPath)) {
+          dirs.push(fullPath);
+        } else if (maxDepth > 0) {
+          dirs.push(...this.findSkillDirectories(fullPath, maxDepth - 1));
+        }
       }
     }
 
-    return files;
+    return dirs;
   }
 
-  private parseSkillFile(content: string, sourcePath: string): LocalSkillCandidate {
-    const { metadata, body } = this.extractFrontmatter(content);
-    const name = metadata.name || path.basename(path.dirname(sourcePath));
+  private parseSkillFile(content: string, folderPath: string): LocalSkillCandidate {
+    const { metadata, body } = this.parseFrontmatter(content);
+    const name = metadata.name || path.basename(folderPath);
     const description = metadata.description || '';
 
     return {
-      id: `local-${createHash('sha1').update(sourcePath).digest('hex').slice(0, 12)}`,
+      id: `local-${createHash('sha1').update(folderPath).digest('hex').slice(0, 12)}`,
       name,
       description,
       prompt: body || content.trim(),
-      sourcePath,
-      sourceType: this.getSourceType(sourcePath),
+      folderPath,
+      sourceType: this.getSourceType(folderPath),
     };
   }
 
-  private extractFrontmatter(content: string): { metadata: Record<string, string>; body: string } {
+  private parseFrontmatter(content: string): { metadata: Record<string, string>; body: string } {
     if (!content.startsWith('---')) {
       return { metadata: {}, body: content.trim() };
     }
@@ -321,8 +489,8 @@ export class SkillManager extends EventEmitter {
     return value;
   }
 
-  private getSourceType(sourcePath: string): string {
-    const normalized = sourcePath.split(path.sep).join('/');
+  private getSourceType(folderPath: string): string {
+    const normalized = folderPath.split(path.sep).join('/');
     if (normalized.includes('/.codex/skills/.system/')) return 'codex-system';
     if (normalized.includes('/.codex/plugins/cache/')) return 'plugin';
     if (normalized.includes('/.codex/skills/')) return 'codex';
@@ -331,6 +499,8 @@ export class SkillManager extends EventEmitter {
   }
 
   private ensureBuiltInSkills(): void {
+    const skillsDir = this.getSkillsRoot();
+    
     const builtInSkills: Array<{ id: string; name: string; description: string; prompt: string; autoMessage?: string; parameters?: SkillParameter[] }> = [
       {
         id: 'builtin-daily-reporter',
@@ -360,8 +530,10 @@ export class SkillManager extends EventEmitter {
     ];
 
     for (const def of builtInSkills) {
+      const folderPath = path.join(skillsDir, def.id);
+
       if (this.skills.has(def.id)) {
-        // Only sync autoMessage and parameters, never overwrite user-edited prompt
+        // Only sync autoMessage and parameters, never overwrite user-edited SKILL.md
         const existing = this.skills.get(def.id)!;
         let needsUpdate = false;
         if (existing.autoMessage !== def.autoMessage) {
@@ -384,15 +556,20 @@ export class SkillManager extends EventEmitter {
         continue;
       }
 
+      // Create folder and SKILL.md for built-in skills
+      fs.mkdirSync(folderPath, { recursive: true });
+      const skillMdPath = path.join(folderPath, 'SKILL.md');
+      const frontmatter = `---\nname: ${def.name}\ndescription: ${def.description}\n---\n\n${def.prompt}`;
+      fs.writeFileSync(skillMdPath, frontmatter, 'utf-8');
+
       const skill: Skill = {
         id: def.id,
         name: def.name,
         description: def.description,
-        prompt: def.prompt,
+        folderPath,
         autoMessage: def.autoMessage,
         parameters: def.parameters,
         enabled: true,
-        sourcePath: undefined,
         sourceType: 'builtin',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -401,11 +578,11 @@ export class SkillManager extends EventEmitter {
       this.skills.set(skill.id, skill);
       const db = getDatabase();
       db.prepare(`
-        INSERT INTO skills (id, name, description, prompt, enabled, source_path, source_type, auto_message, parameters, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO skills (id, name, description, folder_path, enabled, source_type, auto_message, parameters, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        skill.id, skill.name, skill.description, skill.prompt,
-        1, null, skill.sourceType, skill.autoMessage || null,
+        skill.id, skill.name, skill.description, skill.folderPath,
+        1, skill.sourceType, skill.autoMessage || null,
         skill.parameters ? JSON.stringify(skill.parameters) : null,
         skill.createdAt, skill.updatedAt,
       );

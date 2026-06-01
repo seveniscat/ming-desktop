@@ -1,13 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import Editor from '@monaco-editor/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import type { Skill } from '../../shared/types';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import Vditor from 'vditor';
+import type { Skill, SkillFile } from '../../shared/types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { ArrowLeft, Save, Check, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { ArrowLeft, Save, Check, FilePlus, Trash2, File } from 'lucide-react';
+import 'vditor/dist/index.css';
 
 interface SkillEditorProps {
   skill: Skill;
@@ -16,42 +13,99 @@ interface SkillEditorProps {
 }
 
 export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps) {
-  const [name, setName] = useState(skill.name);
-  const [description, setDescription] = useState(skill.description);
-  const [content, setContent] = useState(skill.prompt);
+  const [files, setFiles] = useState<SkillFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string>('SKILL.md');
+  const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [savedOnce, setSavedOnce] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
+  const vditorRef = useRef<Vditor | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const isDark = document.documentElement.classList.contains('dark');
 
-  // Sync content from parent if skill changes
-  useEffect(() => {
-    setContent(skill.prompt);
-    setName(skill.name);
-    setDescription(skill.description);
-    setDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Load files list
+  const loadFiles = useCallback(async () => {
+    try {
+      const fileList = await window.electronAPI.skills.getFiles(skill.id);
+      setFiles(fileList || []);
+    } catch (error) {
+      console.error('Failed to load skill files:', error);
+    }
   }, [skill.id]);
 
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
+
+  // Load file content
+  const loadFileContent = useCallback(async (filePath: string) => {
+    try {
+      const fileContent = await window.electronAPI.skills.readFile(skill.id, filePath);
+      setContent(fileContent);
+      setSelectedFile(filePath);
+      vditorRef.current?.setValue(fileContent);
+      setDirty(false);
+    } catch (error) {
+      console.error('Failed to load file:', error);
+    }
+  }, [skill.id]);
+
+  useEffect(() => {
+    loadFileContent('SKILL.md');
+  }, [skill.id, loadFileContent]);
+
+  // Initialize Vditor
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const vditor = new Vditor(containerRef.current, {
+      height: '100%',
+      mode: 'sv',
+      theme: isDark ? 'dark' : 'classic',
+      toolbar: [
+        'headings', 'bold', 'italic', 'strike', '|',
+        'list', 'ordered-list', 'check', '|',
+        'quote', 'code', 'inline-code', '|',
+        'link', 'table', '|',
+        'undo', 'redo', '|',
+        'preview',
+      ],
+      placeholder: '输入内容...',
+      value: content,
+      cache: { enable: false },
+      preview: { mode: 'both', theme: { current: isDark ? 'dark' : 'classic' } },
+      input: (value) => {
+        setContent(value);
+        setDirty(true);
+      },
+      after: () => {
+        vditorRef.current = vditor;
+      },
+    });
+
+    return () => {
+      vditorRef.current?.destroy();
+      vditorRef.current = null;
+    };
+    // Only initialize once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Save current file
   const handleSave = useCallback(async () => {
-    if (!name.trim()) return;
+    if (!selectedFile) return;
     setSaving(true);
     try {
-      await window.electronAPI.skills.update(skill.id, {
-        name: name.trim(),
-        description: description.trim(),
-        prompt: content.trim(),
-      });
+      await window.electronAPI.skills.writeFile(skill.id, selectedFile, content);
       setDirty(false);
       setSavedOnce(true);
       onSaved();
     } catch (error) {
-      console.error('Failed to save skill:', error);
+      console.error('Failed to save file:', error);
     } finally {
       setSaving(false);
     }
-  }, [skill.id, name, description, content, onSaved]);
+  }, [skill.id, selectedFile, content, onSaved]);
 
   // Cmd+S shortcut
   useEffect(() => {
@@ -65,107 +119,131 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
 
+  // Create new file
+  const handleNewFile = async () => {
+    const name = prompt('文件名（包含路径，例如：scripts/test.sh）：');
+    if (!name) return;
+    
+    const filePath = name.startsWith('/') ? name.slice(1) : name;
+    try {
+      await window.electronAPI.skills.writeFile(skill.id, filePath, '');
+      await loadFiles();
+      loadFileContent(filePath);
+    } catch (error) {
+      console.error('Failed to create file:', error);
+      alert('创建文件失败');
+    }
+  };
+
+  // Delete file
+  const handleDeleteFile = async (filePath: string) => {
+    if (filePath === 'SKILL.md') {
+      alert('不能删除 SKILL.md');
+      return;
+    }
+    if (!confirm(`确定要删除 ${filePath} 吗？`)) return;
+    
+    try {
+      await window.electronAPI.skills.deleteFile(skill.id, filePath);
+      await loadFiles();
+      if (selectedFile === filePath) {
+        loadFileContent('SKILL.md');
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert('删除文件失败');
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => {
-            if (dirty && !confirm('有未保存的更改，确定要离开吗？')) return;
-            onBack();
-          }}>
-            <ArrowLeft size={18} />
+    <div className="flex h-full">
+      {/* Left: File tree */}
+      <div className="w-64 border-r border-[hsl(var(--border))] bg-[var(--surface)] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[hsl(var(--border))]">
+          <Button variant="ghost" size="sm" onClick={onBack} className="h-7 px-2">
+            <ArrowLeft size={14} className="mr-1" />
+            返回
           </Button>
-          <div className="flex items-center gap-2">
-            <Input
-              value={name}
-              onChange={(e) => { setName(e.target.value); setDirty(true); }}
-              className="text-lg font-semibold border-none shadow-none h-auto p-0 focus-visible:ring-0"
-              placeholder="Skill 名称"
-            />
-            {dirty && (
-              <span className="text-xs text-muted-foreground">未保存</span>
-            )}
+        </div>
+
+        {/* File list */}
+        <div className="flex-1 overflow-y-auto p-2">
+          <div className="space-y-0.5">
+            {files.map(file => (
+              <div
+                key={file.path}
+                className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm ${
+                  selectedFile === file.path
+                    ? 'bg-primary/10 text-primary'
+                    : 'hover:bg-[var(--surface-hover)] text-foreground'
+                }`}
+                onClick={() => !file.isDirectory && loadFileContent(file.path)}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <File size={14} className="shrink-0" />
+                  <span className="truncate">{file.name}</span>
+                </div>
+                {!file.isDirectory && file.path !== 'SKILL.md' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteFile(file.path);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {!dirty && savedOnce && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Check size={12} /> 已保存
-            </span>
-          )}
+
+        {/* New file button */}
+        <div className="p-2 border-t border-[hsl(var(--border))]">
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowPreview(!showPreview)}
-            title={showPreview ? '关闭预览' : '打开预览'}
-          >
-            {showPreview ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={saving || !name.trim() || !dirty}
+            variant="secondary"
             size="sm"
-            className="flex items-center gap-1.5"
+            onClick={handleNewFile}
+            className="w-full flex items-center gap-1.5"
           >
-            <Save size={14} />
-            {saving ? '保存中...' : '保存'}
+            <FilePlus size={14} />
+            新建文件
           </Button>
         </div>
       </div>
 
-      {/* Metadata */}
-      <div className="flex items-start gap-4 px-4 py-2 border-b border-[hsl(var(--border))] bg-[var(--surface-hover)]">
-        <div className="flex items-start gap-2 flex-1">
-          <Label className="text-xs text-muted-foreground whitespace-nowrap pt-1.5">描述</Label>
-          <Textarea
-            value={description}
-            onChange={(e) => { setDescription(e.target.value); setDirty(true); }}
-            placeholder="描述 skill 的用途和使用场景"
-            className="min-h-[40px] max-h-[80px] text-sm border-none shadow-none bg-transparent focus-visible:ring-0 resize-y p-1"
-            rows={1}
-          />
+      {/* Right: Editor */}
+      <div className="flex-1 flex flex-col">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[hsl(var(--border))] bg-[var(--surface-hover)]">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">{selectedFile}</span>
+            {dirty && <span className="text-xs text-muted-foreground">未保存</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {!dirty && savedOnce && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Check size={12} /> 已保存
+              </span>
+            )}
+            <Button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              size="sm"
+              className="flex items-center gap-1.5"
+            >
+              <Save size={14} />
+              {saving ? '保存中...' : '保存'}
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* Split view: Monaco editor + Markdown preview */}
-      <div className="flex-1 flex overflow-hidden">
-        <div className={`min-w-0 ${showPreview ? 'flex-1' : 'flex-1'}`}>
-          <Editor
-            height="100%"
-            language="markdown"
-            theme={isDark ? 'vs-dark' : 'vs'}
-            value={content}
-            onChange={(value) => {
-              setContent(value || '');
-              setDirty(true);
-            }}
-            options={{
-              minimap: { enabled: false },
-              lineNumbers: 'on',
-              wordWrap: 'on',
-              fontSize: 14,
-              scrollBeyondLastLine: false,
-              padding: { top: 12 },
-              renderLineHighlight: 'line',
-              overviewRulerBorder: false,
-              scrollbar: {
-                verticalScrollbarSize: 8,
-                horizontalScrollbarSize: 8,
-              },
-            }}
-          />
+        {/* Vditor container */}
+        <div className="flex-1 overflow-hidden">
+          <div ref={containerRef} className="h-full" />
         </div>
-        {showPreview && (
-          <>
-            <div className="w-px bg-[hsl(var(--border))]" />
-            <div className="flex-1 min-w-0 overflow-y-auto p-6 prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {content}
-              </ReactMarkdown>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
