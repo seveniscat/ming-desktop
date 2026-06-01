@@ -78,6 +78,9 @@ export class ChatService {
       onChunk: (text: string) => {
         send(IPCChannels.CONVERSATION_STREAM_CHUNK, { conversationId, content: text });
       },
+      onReasoningChunk: (text: string) => {
+        send(IPCChannels.CONVERSATION_STREAM_REASONING_CHUNK, { conversationId, content: text });
+      },
       onToolEvent: (event: ToolStreamEvent) => {
         send(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, { conversationId, ...event });
       },

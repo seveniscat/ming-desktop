@@ -32,6 +32,7 @@ interface Window {
       chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[]) => void;
       abort: (conversationId: string) => void;
       onStreamChunk: (callback: (data: any) => void) => () => void;
+      onStreamReasoningChunk: (callback: (data: any) => void) => () => void;
       onStreamEnd: (callback: (data: any) => void) => () => void;
       onStreamError: (callback: (data: any) => void) => () => void;
       onStreamToolEvent: (callback: (data: any) => void) => () => void;

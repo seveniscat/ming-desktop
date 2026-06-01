@@ -29,8 +29,9 @@ export class ClaudeAgentSDKModule implements ILLMProviderModule {
     onChunk: (text: string) => void,
     onDebug: (event: import('../../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal,
-    conversationId?: string
-  ): Promise<{ fullContent: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
+    conversationId?: string,
+    _onReasoningChunk?: (text: string) => void,
+  ): Promise<{ fullContent: string; reasoningContent?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
     const callId = randomUUID().slice(0, 12);
     const startTime = Date.now();
 

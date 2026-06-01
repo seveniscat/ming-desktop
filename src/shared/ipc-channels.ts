@@ -86,6 +86,7 @@ export enum IPCChannels {
 
   // Streaming 相关
   CONVERSATION_STREAM_CHUNK = 'conversation:stream-chunk',
+  CONVERSATION_STREAM_REASONING_CHUNK = 'conversation:stream-reasoning-chunk',
   CONVERSATION_STREAM_END = 'conversation:stream-end',
   CONVERSATION_STREAM_ERROR = 'conversation:stream-error',
   CONVERSATION_STREAM_TOOL_EVENT = 'conversation:stream-tool-event',

@@ -34,7 +34,7 @@ export class OpenAICompatibleModule implements ILLMProviderModule {
     return msg?.content || '';
   }
 
-  async chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal): Promise<ChatStreamResult> {
+  async chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal, _onReasoningChunk?: (text: string) => void): Promise<ChatStreamResult> {
     const openai = client as OpenAI;
     const isReasoningModel = /deepseek|qwq|o[134]/i.test(model);
     const createOpts: any = {
@@ -70,7 +70,7 @@ export class OpenAICompatibleModule implements ILLMProviderModule {
     return { fullContent, reasoningContent: reasoningContent || undefined, usage };
   }
 
-  async chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal): Promise<StreamWithToolsResult> {
+  async chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal, _onReasoningChunk?: (text: string) => void): Promise<StreamWithToolsResult> {
     const openai = client as OpenAI;
     const isReasoningModel = /deepseek|qwq|o[134]/i.test(model);
     const createOptions: any = {

@@ -61,6 +61,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_CHUNK, listener);
       return () => ipcRenderer.removeListener(IPCChannels.CONVERSATION_STREAM_CHUNK, listener);
     },
+    onStreamReasoningChunk: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_REASONING_CHUNK, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CONVERSATION_STREAM_REASONING_CHUNK, listener);
+    },
     onStreamEnd: (callback: (data: any) => void) => {
       const listener = (_event: any, data: any) => callback(data);
       ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_END, listener);
@@ -267,6 +272,7 @@ export interface ElectronAPI {
     chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[]) => void;
     abort: (conversationId: string) => void;
     onStreamChunk: (callback: (data: any) => void) => () => void;
+    onStreamReasoningChunk: (callback: (data: any) => void) => () => void;
     onStreamEnd: (callback: (data: any) => void) => () => void;
     onStreamError: (callback: (data: any) => void) => () => void;
     onStreamToolEvent: (callback: (data: any) => void) => () => void;

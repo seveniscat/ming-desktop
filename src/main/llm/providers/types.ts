@@ -32,8 +32,8 @@ export interface StreamWithToolsResult extends ChatStreamResult {
 export interface ILLMProviderModule {
   createClient(config: { apiKey?: string; baseURL?: string }): unknown;
   chat(client: unknown, messages: ChatMessage[], model: string, tools?: ToolDefinition[]): Promise<string | { toolCalls: ToolCall[] }>;
-  chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal): Promise<ChatStreamResult>;
-  chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal): Promise<StreamWithToolsResult>;
+  chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal, onReasoningChunk?: (text: string) => void): Promise<ChatStreamResult>;
+  chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal, onReasoningChunk?: (text: string) => void): Promise<StreamWithToolsResult>;
   fetchModels?(client: unknown): Promise<string[]>;
   testConnection(client: unknown): Promise<{ success: boolean; message: string }>;
 }

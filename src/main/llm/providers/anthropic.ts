@@ -42,7 +42,7 @@ export class AnthropicModule implements ILLMProviderModule {
     return textParts.join('\n');
   }
 
-  async chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal): Promise<ChatStreamResult> {
+  async chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal, onReasoningChunk?: (text: string) => void): Promise<ChatStreamResult> {
     const anthropic = client as Anthropic;
     const stream = anthropic.messages.stream({
       model,
@@ -57,7 +57,12 @@ export class AnthropicModule implements ILLMProviderModule {
     let thinkingContent = '';
 
     stream.on('text', (text: string) => { fullContent += text; onChunk(text); });
-    stream.on('thinking', (thinking: string) => { if (typeof thinking === 'string') thinkingContent += thinking; });
+    stream.on('thinking', (thinking: string) => {
+      if (typeof thinking === 'string') {
+        thinkingContent += thinking;
+        onReasoningChunk?.(thinking);
+      }
+    });
 
     const finalMessage = await stream.finalMessage();
     const usage = finalMessage.usage ? {
@@ -69,7 +74,7 @@ export class AnthropicModule implements ILLMProviderModule {
     return { fullContent, reasoningContent: thinkingContent || undefined, usage };
   }
 
-  async chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal): Promise<StreamWithToolsResult> {
+  async chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal, onReasoningChunk?: (text: string) => void): Promise<StreamWithToolsResult> {
     const anthropic = client as Anthropic;
     const createOptions: any = {
       model,
@@ -93,7 +98,12 @@ export class AnthropicModule implements ILLMProviderModule {
     let chunkCount = 0;
 
     stream.on('text', (text: string) => { fullContent += text; onChunk(text); chunkCount++; });
-    stream.on('thinking', (thinking: string) => { if (typeof thinking === 'string') thinkingContent += thinking; });
+    stream.on('thinking', (thinking: string) => {
+      if (typeof thinking === 'string') {
+        thinkingContent += thinking;
+        onReasoningChunk?.(thinking);
+      }
+    });
 
     const finalMessage = await stream.finalMessage();
     const toolCalls: StreamToolCall[] = finalMessage.content
