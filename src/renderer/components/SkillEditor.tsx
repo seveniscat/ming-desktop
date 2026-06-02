@@ -61,6 +61,8 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     const vditor = new Vditor(containerRef.current, {
       height: '100%',
       mode: 'sv',
+      // Use empty cdn to prevent loading from unpkg.com
+      cdn: '',
       theme: isDark ? 'dark' : 'classic',
       toolbar: [
         'headings', 'bold', 'italic', 'strike', '|',
