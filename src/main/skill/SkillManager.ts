@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import { Skill, SkillConfig, SkillParameter, SkillSyncResult, SkillFile } from '../../shared/types';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
@@ -264,6 +264,27 @@ export class SkillManager extends EventEmitter {
     }
 
     fs.rmSync(absolutePath, { recursive: true, force: true });
+  }
+
+  /**
+   * Open the skill folder in the default IDE (e.g., VS Code, Cursor)
+   */
+  async openInIDE(skillId: string): Promise<void> {
+    const skill = this.skills.get(skillId);
+    if (!skill) throw new Error('Skill not found');
+
+    if (!fs.existsSync(skill.folderPath)) {
+      throw new Error('Skill folder does not exist');
+    }
+
+    // Use shell.openPath to open the folder in the default app (IDE or file manager)
+    const error = await shell.openPath(skill.folderPath);
+    if (error) {
+      Logger.error(`Failed to open skill folder in IDE: ${error}`);
+      throw new Error(`Failed to open folder: ${error}`);
+    }
+
+    Logger.info(`Opened skill folder in IDE: ${skill.folderPath}`);
   }
 
   private listFilesRecursively(dir: string, baseDir: string): SkillFile[] {

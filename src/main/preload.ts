@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFile: (skillId: string, filePath: string) => ipcRenderer.invoke(IPCChannels.SKILL_READ_FILE, skillId, filePath),
     writeFile: (skillId: string, filePath: string, content: string) => ipcRenderer.invoke(IPCChannels.SKILL_WRITE_FILE, skillId, filePath, content),
     deleteFile: (skillId: string, filePath: string) => ipcRenderer.invoke(IPCChannels.SKILL_DELETE_FILE, skillId, filePath),
+    openInIDE: (skillId: string) => ipcRenderer.invoke(IPCChannels.SKILL_OPEN_IN_IDE, skillId),
   },
 
   // Prompt API
@@ -254,6 +255,7 @@ export interface ElectronAPI {
     readFile: (skillId: string, filePath: string) => Promise<string>;
     writeFile: (skillId: string, filePath: string, content: string) => Promise<void>;
     deleteFile: (skillId: string, filePath: string) => Promise<void>;
+    openInIDE: (skillId: string) => Promise<void>;
   };
   prompts: {
     create: (config: any) => Promise<string>;

@@ -1,10 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import Vditor from 'vditor';
+import { useState, useEffect, useCallback } from 'react';
+import MDEditor from '@uiw/react-markdown-editor';
 import type { Skill, SkillFile } from '../../shared/types';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { ArrowLeft, Save, Check, FilePlus, Trash2, File } from 'lucide-react';
-import 'vditor/dist/index.css';
+import { ArrowLeft, Save, Check, FilePlus, Trash2, File, ExternalLink } from 'lucide-react';
 
 interface SkillEditorProps {
   skill: Skill;
@@ -19,8 +17,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [savedOnce, setSavedOnce] = useState(false);
-  const vditorRef = useRef<Vditor | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const isDark = document.documentElement.classList.contains('dark');
 
   // Load files list
@@ -43,7 +39,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
       const fileContent = await window.electronAPI.skills.readFile(skill.id, filePath);
       setContent(fileContent);
       setSelectedFile(filePath);
-      vditorRef.current?.setValue(fileContent);
       setDirty(false);
     } catch (error) {
       console.error('Failed to load file:', error);
@@ -53,46 +48,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
   useEffect(() => {
     loadFileContent('SKILL.md');
   }, [skill.id, loadFileContent]);
-
-  // Initialize Vditor
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const vditor = new Vditor(containerRef.current, {
-      height: '100%',
-      mode: 'sv',
-      lang: 'en_US',
-      // Use empty cdn to prevent loading from unpkg.com
-      cdn: '',
-      theme: isDark ? 'dark' : 'classic',
-      toolbar: [
-        'headings', 'bold', 'italic', 'strike', '|',
-        'list', 'ordered-list', 'check', '|',
-        'quote', 'code', 'inline-code', '|',
-        'link', 'table', '|',
-        'undo', 'redo', '|',
-        'preview',
-      ],
-      placeholder: '输入内容...',
-      value: content,
-      cache: { enable: false },
-      preview: { mode: 'both', theme: { current: isDark ? 'dark' : 'classic' } },
-      input: (value) => {
-        setContent(value);
-        setDirty(true);
-      },
-      after: () => {
-        vditorRef.current = vditor;
-      },
-    });
-
-    return () => {
-      vditorRef.current?.destroy();
-      vditorRef.current = null;
-    };
-    // Only initialize once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Save current file
   const handleSave = useCallback(async () => {
@@ -121,6 +76,15 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
+
+  // Open in IDE
+  const handleOpenInIDE = async () => {
+    try {
+      await window.electronAPI.skills.openInIDE(skill.id);
+    } catch (error) {
+      console.error('Failed to open in IDE:', error);
+    }
+  };
 
   // Create new file
   const handleNewFile = async () => {
@@ -167,6 +131,15 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
           <Button variant="ghost" size="sm" onClick={onBack} className="h-7 px-2">
             <ArrowLeft size={14} className="mr-1" />
             返回
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleOpenInIDE}
+            className="h-7 px-2"
+            title="在 IDE 中打开"
+          >
+            <ExternalLink size={14} />
           </Button>
         </div>
 
@@ -243,9 +216,19 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
           </div>
         </div>
 
-        {/* Vditor container */}
-        <div className="flex-1 overflow-hidden">
-          <div ref={containerRef} className="h-full" />
+        {/* Markdown Editor */}
+        <div className="flex-1 overflow-hidden" data-color-mode={isDark ? 'dark' : 'light'}>
+          <MDEditor
+            value={content}
+            height="100%"
+            onChange={(val) => {
+              setContent(val || '');
+              setDirty(true);
+              setSavedOnce(false);
+            }}
+            visibleDragbar={false}
+            preview="live"
+          />
         </div>
       </div>
     </div>

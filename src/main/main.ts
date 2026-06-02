@@ -280,6 +280,10 @@ function setupIPCHandlers(): void {
     return skillManager.deleteSkillFile(skillId, filePath);
   });
 
+  ipcMain.handle(IPCChannels.SKILL_OPEN_IN_IDE, async (_, skillId: string) => {
+    return skillManager.openInIDE(skillId);
+  });
+
   // Prompt 相关
   ipcMain.handle(IPCChannels.PROMPT_CREATE, async (_, config: any) => {
     return promptTemplateManager.createPrompt(config);

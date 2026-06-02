@@ -17,6 +17,7 @@ export enum IPCChannels {
   SKILL_READ_FILE = 'skill:read-file',
   SKILL_WRITE_FILE = 'skill:write-file',
   SKILL_DELETE_FILE = 'skill:delete-file',
+  SKILL_OPEN_IN_IDE = 'skill:open-in-ide',
 
   // Prompt 相关
   PROMPT_CREATE = 'prompt:create',
