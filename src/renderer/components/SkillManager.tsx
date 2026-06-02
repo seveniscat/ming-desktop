@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Sparkles, ToggleLeft, ToggleRight, RefreshCw, FolderOpen, Upload } from 'lucide-react';
+import { Plus, Eye, Trash2, Sparkles, ToggleLeft, ToggleRight, RefreshCw, FolderOpen, Upload } from 'lucide-react';
 import type { Skill, Agent, SkillSyncResult } from '../../shared/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -8,7 +8,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import SkillEditor from './SkillEditor';
+import SkillViewer from './SkillViewer';
 
 interface SkillForm {
   name: string;
@@ -203,14 +203,9 @@ export default function SkillManager() {
         </div>
       )}
       {editingSkill ? (
-        <SkillEditor
+        <SkillViewer
           skill={editingSkill}
           onBack={() => setEditingSkill(null)}
-          onSaved={async () => {
-            const freshSkills = await loadData();
-            const updated = freshSkills.find(s => s.id === editingSkill.id);
-            if (updated) setEditingSkill(updated);
-          }}
         />
       ) : (
       <>
@@ -332,8 +327,8 @@ export default function SkillManager() {
                           onClick={() => openEdit(skill)}
                           className="flex items-center gap-1.5"
                         >
-                          <Pencil size={14} />
-                          编辑
+                          <Eye size={14} />
+                          预览
                         </Button>
                         <Button
                           variant="ghost"
