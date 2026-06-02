@@ -12,7 +12,6 @@ import ToolsPage from './pages/ToolsPage';
 import McpServersPage from './pages/McpServersPage';
 import McpDebugPage from './pages/McpDebugPage';
 import MemoryPage from './pages/MemoryPage';
-import ToolApprovalDialog from './components/tools/ToolApprovalDialog';
 import DebugPanel from './components/DebugPanel';
 import ClientPerformanceMonitor from './components/ClientPerformanceMonitor';
 import { ThemeProvider } from './components/ThemeProvider';
@@ -92,7 +91,6 @@ function App() {
     <ThemeProvider>
       <IdentityProvider>
       <ClientPerformanceMonitor source={isDebugView ? 'debug-window' : 'main-window'} />
-      <ToolApprovalDialog />
       <Toaster />
       {isDebugView ? (
         <DebugPanel />

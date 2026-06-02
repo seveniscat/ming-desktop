@@ -22,7 +22,8 @@ export interface ToolCallRecord {
   argsText?: string;
   result?: string;
   error?: string;
-  status: 'running' | 'complete' | 'incomplete';
+  status: 'running' | 'complete' | 'incomplete' | 'requires-action';
+  approvalPayload?: { requestId: string; toolName: string; params: Record<string, any> };
   startedAt?: number;
   duration?: number;
 }

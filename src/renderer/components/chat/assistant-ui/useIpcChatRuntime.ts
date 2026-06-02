@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   useExternalStoreRuntime,
   type ExternalStoreAdapter,
@@ -62,6 +62,41 @@ export function useIpcChatRuntime({
 }: UseIpcChatRuntimeOptions) {
   // Track the active streaming conversation so IPC callbacks can filter
   const activeConvRef = useRef<string | null>(null);
+  // Stable ref to setMessages so non-onNew callbacks can access it
+  const setMessagesRef = useRef(setMessages);
+  setMessagesRef.current = setMessages;
+
+  // Map of toolCallId → requestId for pending approvals
+  const pendingApprovals = useRef(new Map<string, string>());
+
+  // Listen for tool approval requests (from ToolApprovalManager IPC)
+  // These arrive mid-stream and should be shown as requires-action tool calls
+  useEffect(() => {
+    if (!window.electronAPI?.tools?.onApprovalRequest) return;
+
+    const unsubscribe = window.electronAPI.tools.onApprovalRequest(
+      (data: { requestId: string; toolName: string; params: Record<string, any> }) => {
+        const toolCallId = `approval-${data.requestId}`;
+        pendingApprovals.current.set(toolCallId, data.requestId);
+
+        const record: ToolCallRecord = {
+          id: toolCallId,
+          toolName: data.toolName,
+          args: data.params,
+          argsText: JSON.stringify(data.params, null, 2),
+          status: 'requires-action',
+          approvalPayload: {
+            requestId: data.requestId,
+            toolName: data.toolName,
+            params: data.params,
+          },
+        };
+        setMessagesRef.current((prev) => upsertToolCall(prev, record));
+      },
+    );
+
+    return unsubscribe;
+  }, []);
 
   // --- onNew: called when the user sends a message via assistant-ui ---
   const onNew = useCallback(
@@ -274,5 +309,48 @@ export function useIpcChatRuntime({
     onCancel,
   };
 
-  return useExternalStoreRuntime(adapter);
+  const runtime = useExternalStoreRuntime(adapter);
+
+  /** Respond to an inline tool approval request */
+  const respondApproval = useCallback(
+    (toolCallId: string, approved: boolean) => {
+      const requestId = pendingApprovals.current.get(toolCallId);
+      if (!requestId) return;
+
+      // Send IPC response to backend
+      window.electronAPI.tools.respondApproval(requestId, approved);
+
+      // Clean up pending map
+      pendingApprovals.current.delete(toolCallId);
+
+      // Update the tool call record status
+      setMessagesRef.current((prev) => {
+        const msgs = [...prev];
+        const last = msgs[msgs.length - 1];
+        if (last?.role === 'assistant' && last.toolCalls?.length) {
+          const idx = last.toolCalls.findIndex(
+            (tc) => tc.id === toolCallId && tc.status === 'requires-action',
+          );
+          if (idx >= 0) {
+            const updated = { ...last, toolCalls: [...last.toolCalls] };
+            updated.toolCalls[idx] = {
+              ...updated.toolCalls[idx],
+              status: approved ? ('complete' as const) : ('incomplete' as const),
+              result: approved ? 'Approved by user' : undefined,
+              error: approved ? undefined : 'Denied by user',
+            };
+            msgs[msgs.length - 1] = updated;
+          }
+        }
+        return msgs;
+      });
+    },
+    [],
+  );
+
+  return {
+    runtime,
+    respondApproval,
+    pendingApprovals: pendingApprovals.current,
+  };
 }

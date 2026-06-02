@@ -13,6 +13,7 @@ import SkillParameterDialog from './SkillParameterDialog';
 import ExecutionDetails from './ExecutionDetails';
 import { useIpcChatRuntime } from './assistant-ui/useIpcChatRuntime';
 import { AssistantThread } from './assistant-ui/AssistantThread';
+import { ToolApprovalProvider } from './assistant-ui/tool-approval-context';
 import { AssistantTheme } from './assistant-ui/AssistantTheme';
 import { appendStreamText, appendStreamError, createEmptyAssistantMessage } from './assistant-ui/messageAdapter';
 import type { LLMProvider, Conversation, Message } from './types';
@@ -222,7 +223,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   // --- Assistant-ui runtime ---
   const activeSkillIds = currentConversationId ? getActiveSkills(currentConversationId) : [];
 
-  const runtime = useIpcChatRuntime({
+  const { runtime, respondApproval, pendingApprovals } = useIpcChatRuntime({
     conversationId: currentConversationId,
     setConversationId: setCurrentConversationId,
     messages,
@@ -367,6 +368,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
       {/* Chat main panel - wrapped with assistant-ui runtime */}
       <AssistantRuntimeProvider runtime={runtime}>
+        <ToolApprovalProvider value={{ pendingApprovals, respondApproval }}>
         <div className="flex-1 h-full flex flex-col min-w-0">
           <ChatHeader />
 
@@ -464,6 +466,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
             )}
           </AssistantTheme>
         </div>
+        </ToolApprovalProvider>
       </AssistantRuntimeProvider>
 
       <VariableFillDialog
