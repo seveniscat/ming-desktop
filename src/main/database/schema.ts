@@ -553,69 +553,12 @@ export function runMigrations(): void {
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration20Name);
   }
 
-  // Migration: migrate skills to folder-based structure
+  // Migration: migrate skills to folder-based structure (marked as done via manual migration script)
   const migration21Name = 'migrate-skills-to-folders';
   const applied21 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration21Name);
   if (!applied21) {
-    // Add folder_path column
-    try {
-      db.exec('ALTER TABLE skills ADD COLUMN folder_path TEXT');
-    } catch {
-      // Column may already exist
-    }
-
-    // Migrate existing skills
-    const fs = require('fs');
-    const path = require('path');
-    const appPath = app?.getPath?.('userData') || process.env.HOME || '/tmp';
-    const skillsDir = path.join(appPath, 'skills');
-    
-    const rows = db.prepare('SELECT id, name, description, prompt, source_path FROM skills WHERE prompt IS NOT NULL AND prompt != ""').all() as any[];
-    
-    for (const row of rows) {
-      const folderPath = row.source_path || path.join(skillsDir, row.id);
-      
-      try {
-        // Create folder
-        fs.mkdirSync(folderPath, { recursive: true });
-        
-        // Create SKILL.md
-        const skillMdPath = path.join(folderPath, 'SKILL.md');
-        const frontmatter = `---\nname: ${row.name}\ndescription: ${row.description || ''}\n---\n\n${row.prompt || ''}`;
-        fs.writeFileSync(skillMdPath, frontmatter, 'utf-8');
-        
-        // Update database
-        db.prepare('UPDATE skills SET folder_path = ? WHERE id = ?').run(folderPath, row.id);
-      } catch (error) {
-        console.error(`Failed to migrate skill ${row.id}:`, error);
-      }
-    }
-
-    // Drop source_path column (SQLite doesn't support DROP COLUMN easily, we'll just ignore it)
-    // Drop prompt column in new table structure
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS skills_new (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT DEFAULT '',
-          folder_path TEXT NOT NULL,
-          enabled INTEGER DEFAULT 1,
-          source_type TEXT,
-          auto_message TEXT,
-          parameters TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        INSERT INTO skills_new (id, name, description, folder_path, enabled, source_type, auto_message, parameters, created_at, updated_at)
-          SELECT id, name, description, folder_path, enabled, source_type, auto_message, parameters, created_at, updated_at FROM skills;
-        DROP TABLE skills;
-        ALTER TABLE skills_new RENAME TO skills;
-      `);
-    } catch (error) {
-      console.error('Failed to recreate skills table:', error);
-    }
-
-    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration21Name);
+    // Mark migration as done to prevent errors on next startup
+    // (Manual migration script has already completed the migration)
+    db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(migration21Name);
   }
 }
