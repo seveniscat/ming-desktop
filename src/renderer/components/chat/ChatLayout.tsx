@@ -8,11 +8,9 @@ import { useExecutionState } from './hooks/useExecutionState';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import ConversationList from './ConversationList';
 import ChatHeader from './ChatHeader';
-import VariableFillDialog from './VariableFillDialog';
-import SkillParameterDialog from './SkillParameterDialog';
+import { AssistantThread } from './assistant-ui/AssistantThread';
 import ExecutionDetails from './ExecutionDetails';
 import { useIpcChatRuntime } from './assistant-ui/useIpcChatRuntime';
-import { AssistantThread } from './assistant-ui/AssistantThread';
 import { ToolApprovalProvider } from './assistant-ui/tool-approval-context';
 import { AssistantTheme } from './assistant-ui/AssistantTheme';
 import { appendStreamText, appendStreamError, createEmptyAssistantMessage } from './assistant-ui/messageAdapter';
@@ -411,7 +409,15 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
             {/* Thread (messages + empty state + composer with slash commands) */}
             <div className="flex-1 min-h-0">
-              <AssistantThread commands={commands} />
+              <AssistantThread
+                commands={commands}
+                pendingParameterSkill={pendingParameterSkill}
+                pendingVariablePrompt={pendingVariablePrompt}
+                onApplySkillParameters={applySkillParameters}
+                onCancelSkillParameters={cancelSkillParameters}
+                onApplyVariableValues={applyVariableValues}
+                onCancelVariableFill={cancelVariableFill}
+              />
             </div>
 
             {/* Memory suggestion card */}
@@ -468,21 +474,6 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
         </div>
         </ToolApprovalProvider>
       </AssistantRuntimeProvider>
-
-      <VariableFillDialog
-        open={!!pendingVariablePrompt}
-        variables={pendingVariablePrompt ? pendingVariablePrompt.variables : []}
-        onConfirm={applyVariableValues}
-        onCancel={cancelVariableFill}
-      />
-
-      <SkillParameterDialog
-        open={!!pendingParameterSkill}
-        skillName={pendingParameterSkill?.skillName || ''}
-        parameters={pendingParameterSkill?.parameters || []}
-        onConfirm={applySkillParameters}
-        onCancel={cancelSkillParameters}
-      />
     </div>
   );
 }
