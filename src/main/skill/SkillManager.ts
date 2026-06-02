@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { app, shell } from 'electron';
+import { exec } from 'child_process';
 import { Skill, SkillConfig, SkillParameter, SkillSyncResult, SkillFile } from '../../shared/types';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
@@ -267,7 +268,7 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
-   * Open the skill folder in the default IDE (e.g., VS Code, Cursor)
+   * Open the skill folder in Cursor IDE (fallback to shell.openPath if Cursor not available)
    */
   async openInIDE(skillId: string): Promise<void> {
     const skill = this.skills.get(skillId);
@@ -277,14 +278,20 @@ export class SkillManager extends EventEmitter {
       throw new Error('Skill folder does not exist');
     }
 
-    // Use shell.openPath to open the folder in the default app (IDE or file manager)
-    const error = await shell.openPath(skill.folderPath);
-    if (error) {
-      Logger.error(`Failed to open skill folder in IDE: ${error}`);
-      throw new Error(`Failed to open folder: ${error}`);
-    }
+    // Try to open with Cursor first
+    exec(`cursor "${skill.folderPath}"`, (error) => {
+      if (error) {
+        // Cursor not found, try code (VS Code), then fallback to shell.openPath
+        exec(`code "${skill.folderPath}"`, (error2) => {
+          if (error2) {
+            // Fallback to system default
+            shell.openPath(skill.folderPath);
+          }
+        });
+      }
+    });
 
-    Logger.info(`Opened skill folder in IDE: ${skill.folderPath}`);
+    Logger.info(`Opening skill folder in IDE: ${skill.folderPath}`);
   }
 
   private listFilesRecursively(dir: string, baseDir: string): SkillFile[] {
