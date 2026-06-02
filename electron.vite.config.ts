@@ -38,29 +38,40 @@ export default defineConfig({
       {
         name: 'serve-vditor-assets',
         configureServer(server) {
-          // Register middleware without path filter, handle path matching inside
+          // Serve all Vditor dist assets (js, css, etc.)
           server.middlewares.use((req, res, next) => {
-            // Only handle requests to /dist/js/i18n/
-            if (!req.url || !req.url.includes('/dist/js/i18n/')) {
+            // Only handle requests to /dist/ (Vditor's dist directory)
+            if (!req.url || !req.url.startsWith('/dist/')) {
               return next()
             }
             
-            // Extract filename from URL (e.g., /dist/js/i18n/en_US.js -> en_US.js)
-            const filename = req.url.split('/').pop()
-            if (!filename || !filename.endsWith('.js')) {
+            // Extract the path after /dist/
+            const relativePath = req.url.replace('/dist/', '')
+            const vditorDistPath = resolve(__dirname, 'node_modules/vditor/dist')
+            const filePath = resolve(vditorDistPath, relativePath)
+            
+            // Security check: ensure the file is within vditor/dist
+            if (!filePath.startsWith(vditorDistPath)) {
               return next()
             }
             
-            const vditorI18nPath = resolve(__dirname, 'node_modules/vditor/dist/js/i18n')
-            const filePath = resolve(vditorI18nPath, filename)
-            
-            console.log('[Vditor Assets] Checking:', filePath)
-            
-            if (fs.existsSync(filePath)) {
-              res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+              // Set appropriate content type
+              const ext = filePath.split('.').pop()?.toLowerCase()
+              const contentTypeMap: Record<string, string> = {
+                'js': 'application/javascript; charset=utf-8',
+                'css': 'text/css; charset=utf-8',
+                'json': 'application/json; charset=utf-8',
+                'woff': 'font/woff',
+                'woff2': 'font/woff2',
+                'ttf': 'font/ttf',
+                'eot': 'application/vnd.ms-fontobject',
+                'svg': 'image/svg+xml',
+              }
+              
+              res.setHeader('Content-Type', contentTypeMap[ext || ''] || 'application/octet-stream')
               fs.createReadStream(filePath).pipe(res)
             } else {
-              console.log('[Vditor Assets] Not found:', filePath)
               next()
             }
           })
