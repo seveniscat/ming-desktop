@@ -38,11 +38,18 @@ export default defineConfig({
       {
         name: 'serve-vditor-assets',
         configureServer(server) {
-          server.middlewares.use('/dist/js', (req, res, next) => {
-            const vditorJsPath = resolve(__dirname, 'node_modules/vditor/dist/js')
-            const filePath = resolve(vditorJsPath, req.url || '')
-            if (filePath.startsWith(vditorJsPath) && fs.existsSync(filePath)) {
-              res.setHeader('Content-Type', 'application/javascript')
+          // Return early for requests that don't match
+          server.middlewares.use('/dist/js/i18n', (req, res, next) => {
+            if (!req.url || !req.url.endsWith('.js')) {
+              return next()
+            }
+            
+            const vditorI18nPath = resolve(__dirname, 'node_modules/vditor/dist/js/i18n')
+            const filePath = resolve(vditorI18nPath, req.url.replace('/dist/js/i18n/', ''))
+            
+            if (filePath.startsWith(vditorI18nPath) && fs.existsSync(filePath)) {
+              res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+              res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
               fs.createReadStream(filePath).pipe(res)
             } else {
               next()
