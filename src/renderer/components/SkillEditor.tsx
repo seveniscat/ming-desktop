@@ -61,7 +61,7 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     const vditor = new Vditor(containerRef.current, {
       height: '100%',
       mode: 'sv',
-      lang: 'en', // Use English to avoid CDN i18n loading
+      lang: 'en_US', // Use English (US) to avoid CDN i18n loading
       theme: isDark ? 'dark' : 'classic',
       toolbar: [
         'headings', 'bold', 'italic', 'strike', '|',
