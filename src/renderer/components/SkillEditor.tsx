@@ -61,7 +61,6 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
     const vditor = new Vditor(containerRef.current, {
       height: '100%',
       mode: 'sv',
-      lang: 'en_US', // Use English (US) to avoid CDN i18n loading
       theme: isDark ? 'dark' : 'classic',
       toolbar: [
         'headings', 'bold', 'italic', 'strike', '|',
@@ -71,11 +70,10 @@ export default function SkillEditor({ skill, onBack, onSaved }: SkillEditorProps
         'undo', 'redo', '|',
         'preview',
       ],
-      placeholder: 'Type here...',
+      placeholder: '输入内容...',
       value: content,
       cache: { enable: false },
       preview: { mode: 'both', theme: { current: isDark ? 'dark' : 'classic' } },
-      cdn: '', // Use local assets instead of CDN
       input: (value) => {
         setContent(value);
         setDirty(true);
