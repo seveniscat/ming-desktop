@@ -141,4 +141,10 @@ export enum IPCChannels {
   MEMORY_DELETE = 'memory:delete',
   MEMORY_PREVIEW = 'memory:preview',
   MEMORY_SEARCH = 'memory:search',
+
+  // Update 相关
+  UPDATE_CHECK = 'update:check',
+  UPDATE_DOWNLOAD = 'update:download',
+  UPDATE_INSTALL = 'update:install',
+  UPDATE_STATUS_EVENT = 'update:status-event',
 }

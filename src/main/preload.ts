@@ -235,6 +235,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     preview: () => ipcRenderer.invoke(IPCChannels.MEMORY_PREVIEW),
     search: (query: string, limit?: number) => ipcRenderer.invoke(IPCChannels.MEMORY_SEARCH, query, limit),
   },
+
+  // Update API
+  updater: {
+    check: () => ipcRenderer.invoke(IPCChannels.UPDATE_CHECK),
+    download: () => ipcRenderer.invoke(IPCChannels.UPDATE_DOWNLOAD),
+    install: () => ipcRenderer.invoke(IPCChannels.UPDATE_INSTALL),
+    onStatusChange: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.UPDATE_STATUS_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.UPDATE_STATUS_EVENT, listener);
+    },
+  },
 });
 
 // 类型定义
@@ -375,8 +387,10 @@ export interface ElectronAPI {
     preview: () => Promise<{ text: string; tokens: number }>;
     search: (query: string, limit?: number) => Promise<any[]>;
   };
-}
-    preview: () => Promise<{ text: string; tokens: number }>;
-    search: (query: string, limit?: number) => Promise<any[]>;
+  updater: {
+    check: () => Promise<{ hasUpdate: boolean; version?: string; releaseNotes?: string }>;
+    download: () => Promise<void>;
+    install: () => void;
+    onStatusChange: (callback: (data: any) => void) => () => void;
   };
 }

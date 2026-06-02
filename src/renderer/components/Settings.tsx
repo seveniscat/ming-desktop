@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, RotateCcw, Key, Palette, Globe, ChevronRight } from 'lucide-react';
+import { Save, RotateCcw, Key, Palette, Globe, ChevronRight, Download, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import LLMConfiguration from './LLMConfiguration';
 import { useTheme } from './ThemeProvider';
 import { themePresets } from '@/lib/themes';
@@ -7,8 +7,18 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/
 import { Button } from './ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Switch } from './ui/switch';
+import { Progress } from './ui/progress';
 import { Label } from './ui/label';
 import { cn } from '@/lib/utils';
+
+type UpdateStatus =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'up-to-date' }
+  | { status: 'available'; version: string; releaseNotes?: string }
+  | { status: 'downloading'; progress: number }
+  | { status: 'downloaded'; version: string }
+  | { status: 'error'; message: string };
 
 type SubPage = 'llm' | null;
 
@@ -18,10 +28,41 @@ export default function Settings() {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [subPage, setSubPage] = useState<SubPage>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ status: 'idle' });
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  // 订阅更新状态变化
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.updater?.onStatusChange((data: UpdateStatus) => {
+      setUpdateStatus(data);
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  const handleCheckUpdate = async () => {
+    try {
+      await window.electronAPI?.updater?.check();
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    try {
+      await window.electronAPI?.updater?.download();
+    } catch (error) {
+      console.error('Failed to download update:', error);
+    }
+  };
+
+  const handleInstallUpdate = () => {
+    window.electronAPI?.updater?.install();
+  };
 
   const loadSettings = async () => {
     try {
@@ -149,12 +190,88 @@ export default function Settings() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-foreground">Auto Update</div>
-                <div className="text-sm text-muted-foreground">Automatically check for updates</div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-foreground">Auto Update</div>
+                  <div className="text-sm text-muted-foreground">Automatically check for updates on startup</div>
+                </div>
+                <Switch checked={autoUpdate} onCheckedChange={setAutoUpdate} />
               </div>
-              <Switch checked={autoUpdate} onCheckedChange={setAutoUpdate} />
+
+              <div className="border-t border-[hsl(var(--border))] pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="font-medium text-foreground">Version Update</div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCheckUpdate}
+                    disabled={updateStatus.status === 'checking' || updateStatus.status === 'downloading'}
+                    className="flex items-center gap-1.5 rounded-lg h-8 text-xs"
+                  >
+                    <RefreshCw size={13} className={updateStatus.status === 'checking' ? 'animate-spin' : ''} />
+                    {updateStatus.status === 'checking' ? 'Checking...' : 'Check for Updates'}
+                  </Button>
+                </div>
+
+                {/* Update status display */}
+                {updateStatus.status === 'up-to-date' && (
+                  <div className="flex items-center gap-2 text-sm text-emerald-500">
+                    <CheckCircle size={14} />
+                    <span>Already up to date</span>
+                  </div>
+                )}
+
+                {updateStatus.status === 'available' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-primary">
+                      <AlertCircle size={14} />
+                      <span>New version <strong>v{updateStatus.version}</strong> is available</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleDownloadUpdate}
+                      className="flex items-center gap-1.5 rounded-lg h-8 text-xs"
+                    >
+                      <Download size={13} />
+                      Download Update
+                    </Button>
+                  </div>
+                )}
+
+                {updateStatus.status === 'downloading' && (
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">
+                      Downloading... {updateStatus.progress}%
+                    </div>
+                    <Progress value={updateStatus.progress} className="h-2" />
+                  </div>
+                )}
+
+                {updateStatus.status === 'downloaded' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-emerald-500">
+                      <CheckCircle size={14} />
+                      <span>v{updateStatus.version} downloaded, restart to install</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleInstallUpdate}
+                      className="flex items-center gap-1.5 rounded-lg h-8 text-xs"
+                    >
+                      <RefreshCw size={13} />
+                      Install & Restart
+                    </Button>
+                  </div>
+                )}
+
+                {updateStatus.status === 'error' && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle size={14} />
+                    <span>{updateStatus.message}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -89,6 +89,11 @@
   "build": {
     "appId": "com.ming.desktop",
     "productName": "Ming",
+    "publish": {
+      "provider": "github",
+      "owner": "TODO",
+      "repo": "TODO"
+    },
     "directories": {
       "output": "release"
     },

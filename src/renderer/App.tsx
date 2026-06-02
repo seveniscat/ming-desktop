@@ -17,6 +17,7 @@ import DebugPanel from './components/DebugPanel';
 import ClientPerformanceMonitor from './components/ClientPerformanceMonitor';
 import { ThemeProvider } from './components/ThemeProvider';
 import { IdentityProvider } from './components/IdentityProvider';
+import { Toaster } from './components/ui/sonner';
 
 interface ChatLaunchRequest {
   agentName: string;
@@ -92,6 +93,7 @@ function App() {
       <IdentityProvider>
       <ClientPerformanceMonitor source={isDebugView ? 'debug-window' : 'main-window'} />
       <ToolApprovalDialog />
+      <Toaster />
       {isDebugView ? (
         <DebugPanel />
       ) : (
