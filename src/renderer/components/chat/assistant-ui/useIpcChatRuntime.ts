@@ -1,14 +1,15 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   useExternalStoreRuntime,
   type ExternalStoreAdapter,
 } from '@assistant-ui/react';
-import type { Message } from '../types';
+import type { Message, ToolCallRecord } from '../types';
 import {
   toThreadMessageLike,
   createEmptyAssistantMessage,
   appendStreamText,
   appendStreamError,
+  upsertToolCall,
 } from './messageAdapter';
 
 export interface MemorySuggestionEvent {
@@ -61,6 +62,41 @@ export function useIpcChatRuntime({
 }: UseIpcChatRuntimeOptions) {
   // Track the active streaming conversation so IPC callbacks can filter
   const activeConvRef = useRef<string | null>(null);
+  // Stable ref to setMessages so non-onNew callbacks can access it
+  const setMessagesRef = useRef(setMessages);
+  setMessagesRef.current = setMessages;
+
+  // Map of toolCallId → requestId for pending approvals
+  const pendingApprovals = useRef(new Map<string, string>());
+
+  // Listen for tool approval requests (from ToolApprovalManager IPC)
+  // These arrive mid-stream and should be shown as requires-action tool calls
+  useEffect(() => {
+    if (!window.electronAPI?.tools?.onApprovalRequest) return;
+
+    const unsubscribe = window.electronAPI.tools.onApprovalRequest(
+      (data: { requestId: string; toolName: string; params: Record<string, any> }) => {
+        const toolCallId = `approval-${data.requestId}`;
+        pendingApprovals.current.set(toolCallId, data.requestId);
+
+        const record: ToolCallRecord = {
+          id: toolCallId,
+          toolName: data.toolName,
+          args: data.params,
+          argsText: JSON.stringify(data.params, null, 2),
+          status: 'requires-action',
+          approvalPayload: {
+            requestId: data.requestId,
+            toolName: data.toolName,
+            params: data.params,
+          },
+        };
+        setMessagesRef.current((prev) => upsertToolCall(prev, record));
+      },
+    );
+
+    return unsubscribe;
+  }, []);
 
   // --- onNew: called when the user sends a message via assistant-ui ---
   const onNew = useCallback(
@@ -115,19 +151,38 @@ export function useIpcChatRuntime({
         },
       );
 
+      const removeReasoningChunk = window.electronAPI.conversations.onStreamReasoningChunk(
+        (data) => {
+          if (data.conversationId !== convId) return;
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === 'assistant') {
+              updated[updated.length - 1] = {
+                ...last,
+                reasoningContent: (last.reasoningContent || '') + data.content,
+              };
+            }
+            return updated;
+          });
+        },
+      );
+
       const removeEnd = window.electronAPI.conversations.onStreamEnd(
         (data) => {
           removeChunk();
+          removeReasoningChunk();
           removeEnd();
           removeError();
           removeToolEvent();
           if (data.conversationId !== convId) return;
-          // Attach reasoning content from the completed stream
+          // Reasoning is now streamed in real-time via onStreamReasoningChunk,
+          // but fall back to attaching from streamEnd for providers that don't stream reasoning
           if (data.reasoningContent) {
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
-              if (last && last.role === 'assistant') {
+              if (last && last.role === 'assistant' && !last.reasoningContent) {
                 updated[updated.length - 1] = { ...last, reasoningContent: data.reasoningContent };
               }
               return updated;
@@ -141,6 +196,7 @@ export function useIpcChatRuntime({
       const removeError = window.electronAPI.conversations.onStreamError(
         (data) => {
           removeChunk();
+          removeReasoningChunk();
           removeEnd();
           removeError();
           removeToolEvent();
@@ -154,6 +210,8 @@ export function useIpcChatRuntime({
       const removeToolEvent =
         window.electronAPI.conversations.onStreamToolEvent((data) => {
           if (data.conversationId !== convId) return;
+
+          // Handle suggest_memory as a special case (triggers memory suggestion UI)
           if (data.event === 'tool_result' && data.toolName === 'suggest_memory') {
             try {
               const parsed = JSON.parse(data.result);
@@ -165,6 +223,59 @@ export function useIpcChatRuntime({
                 });
               }
             } catch {}
+          }
+
+          // Process all tool events for display in chat bubbles
+          if (data.event === 'tool_start' && data.toolName) {
+            const record: ToolCallRecord = {
+              id: `${data.toolName}-${data.timestamp}`,
+              toolName: data.toolName,
+              args: data.args,
+              status: 'running',
+              startedAt: data.timestamp,
+            };
+            setMessages((prev) => upsertToolCall(prev, record));
+          } else if (data.event === 'tool_result' && data.toolName) {
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last?.role === 'assistant' && last.toolCalls?.length) {
+                const idx = last.toolCalls.findIndex(
+                  (tc) => tc.toolName === data.toolName && tc.status === 'running',
+                );
+                if (idx >= 0) {
+                  const updated = { ...last, toolCalls: [...last.toolCalls] };
+                  updated.toolCalls[idx] = {
+                    ...updated.toolCalls[idx],
+                    status: 'complete' as const,
+                    result: data.result,
+                    duration: data.duration,
+                  };
+                  msgs[msgs.length - 1] = updated;
+                }
+              }
+              return msgs;
+            });
+          } else if (data.event === 'tool_error' && data.toolName) {
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last?.role === 'assistant' && last.toolCalls?.length) {
+                const idx = last.toolCalls.findIndex(
+                  (tc) => tc.toolName === data.toolName && tc.status === 'running',
+                );
+                if (idx >= 0) {
+                  const updated = { ...last, toolCalls: [...last.toolCalls] };
+                  updated.toolCalls[idx] = {
+                    ...updated.toolCalls[idx],
+                    status: 'incomplete' as const,
+                    error: data.error,
+                  };
+                  msgs[msgs.length - 1] = updated;
+                }
+              }
+              return msgs;
+            });
           }
         });
 
@@ -198,5 +309,48 @@ export function useIpcChatRuntime({
     onCancel,
   };
 
-  return useExternalStoreRuntime(adapter);
+  const runtime = useExternalStoreRuntime(adapter);
+
+  /** Respond to an inline tool approval request */
+  const respondApproval = useCallback(
+    (toolCallId: string, approved: boolean) => {
+      const requestId = pendingApprovals.current.get(toolCallId);
+      if (!requestId) return;
+
+      // Send IPC response to backend
+      window.electronAPI.tools.respondApproval(requestId, approved);
+
+      // Clean up pending map
+      pendingApprovals.current.delete(toolCallId);
+
+      // Update the tool call record status
+      setMessagesRef.current((prev) => {
+        const msgs = [...prev];
+        const last = msgs[msgs.length - 1];
+        if (last?.role === 'assistant' && last.toolCalls?.length) {
+          const idx = last.toolCalls.findIndex(
+            (tc) => tc.id === toolCallId && tc.status === 'requires-action',
+          );
+          if (idx >= 0) {
+            const updated = { ...last, toolCalls: [...last.toolCalls] };
+            updated.toolCalls[idx] = {
+              ...updated.toolCalls[idx],
+              status: approved ? ('complete' as const) : ('incomplete' as const),
+              result: approved ? 'Approved by user' : undefined,
+              error: approved ? undefined : 'Denied by user',
+            };
+            msgs[msgs.length - 1] = updated;
+          }
+        }
+        return msgs;
+      });
+    },
+    [],
+  );
+
+  return {
+    runtime,
+    respondApproval,
+    pendingApprovals: pendingApprovals.current,
+  };
 }

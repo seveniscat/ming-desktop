@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2, Sparkles, ToggleLeft, ToggleRight, RefreshCw, FolderOpen } from 'lucide-react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { Plus, Pencil, Trash2, Sparkles, ToggleLeft, ToggleRight, RefreshCw, FolderOpen, Upload } from 'lucide-react';
 import type { Skill, Agent, SkillSyncResult } from '../../shared/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -32,6 +32,57 @@ export default function SkillManager() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleImportZip = useCallback(async (filePath: string) => {
+    setImporting(true);
+    setSyncMessage('');
+    try {
+      const result = await window.electronAPI.skills.importZip(filePath);
+      setSyncMessage(`✅ 已导入 Skill: ${result.skillName}`);
+      await loadData();
+    } catch (error: any) {
+      setSyncMessage(`❌ 导入失败: ${error.message || '未知错误'}`);
+    } finally {
+      setImporting(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+
+    const file = files[0];
+    if (!file.name.endsWith('.zip')) {
+      setSyncMessage('❌ 请拖入 .zip 文件');
+      return;
+    }
+
+    // Electron's File object has a `path` property for local files
+    const filePath = (file as any).path;
+    if (filePath) {
+      handleImportZip(filePath);
+    }
+  }, [handleImportZip]);
 
   useEffect(() => {
     loadData();
@@ -135,7 +186,22 @@ export default function SkillManager() {
   };
 
   return (
-    <div className={`h-full ${editingSkill ? '' : 'overflow-y-auto p-8'}`}>
+    <div
+      className={`h-full ${editingSkill ? '' : 'overflow-y-auto p-8'}`}
+      onDragOver={editingSkill ? undefined : handleDragOver}
+      onDragLeave={editingSkill ? undefined : handleDragLeave}
+      onDrop={editingSkill ? undefined : handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-primary/50 bg-primary/5 px-16 py-12">
+            <Upload size={48} className="text-primary" />
+            <p className="text-xl font-semibold text-foreground">松开以安装 Skill</p>
+            <p className="text-sm text-muted-foreground">支持包含 SKILL.md 的 .zip 文件</p>
+          </div>
+        </div>
+      )}
       {editingSkill ? (
         <SkillEditor
           skill={editingSkill}
@@ -167,6 +233,27 @@ export default function SkillManager() {
               <Button onClick={openCreate} className="flex items-center gap-2">
                 <Plus size={18} />
                 创建 Skill
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.zip';
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      const filePath = (file as any).path;
+                      if (filePath) handleImportZip(filePath);
+                    }
+                  };
+                  input.click();
+                }}
+                disabled={importing}
+                className="flex items-center gap-2"
+              >
+                <Upload size={18} />
+                {importing ? '导入中...' : '导入 ZIP'}
               </Button>
             </div>
           </div>

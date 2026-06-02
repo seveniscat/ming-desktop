@@ -200,7 +200,8 @@ export class LLMProviderManager extends EventEmitter {
     onChunk: (text: string) => void,
     onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal,
-    conversationId?: string
+    conversationId?: string,
+    onReasoningChunk?: (text: string) => void,
   ): Promise<{ fullContent: string; reasoningContent?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }> {
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error(`Provider not found: ${providerId}`);
@@ -216,7 +217,8 @@ export class LLMProviderManager extends EventEmitter {
         onChunk,
         onDebug,
         signal,
-        conversationId
+        conversationId,
+        onReasoningChunk,
       );
     }
 
@@ -241,7 +243,7 @@ export class LLMProviderManager extends EventEmitter {
 
     try {
       const mod = getModule(provider.moduleType);
-      const result = await mod.chatStream(client, messages, resolvedModel, onChunk, signal);
+      const result = await mod.chatStream(client, messages, resolvedModel, onChunk, signal, onReasoningChunk);
 
       const shortPreview = result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : '');
       onDebug({
@@ -280,7 +282,8 @@ export class LLMProviderManager extends EventEmitter {
     onChunk: (text: string) => void,
     onDebug: (event: import('../../shared/types').DebugModelCall) => void,
     signal?: AbortSignal,
-    conversationId?: string
+    conversationId?: string,
+    onReasoningChunk?: (text: string) => void,
   ): Promise<StreamWithToolsResult> {
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error(`Provider not found: ${providerId}`);
@@ -296,7 +299,8 @@ export class LLMProviderManager extends EventEmitter {
         onChunk,
         onDebug,
         signal,
-        conversationId
+        conversationId,
+        onReasoningChunk,
       );
       return { ...result, toolCalls: [] };
     }
@@ -323,7 +327,7 @@ export class LLMProviderManager extends EventEmitter {
 
     try {
       const mod = getModule(provider.moduleType);
-      const result = await mod.chatStreamWithTools(client, messages, resolvedModel, tools, onChunk, signal);
+      const result = await mod.chatStreamWithTools(client, messages, resolvedModel, tools, onChunk, signal, onReasoningChunk);
 
       const shortPreview = result.fullContent.slice(0, 200) + (result.fullContent.length > 200 ? '...' : '');
       onDebug({

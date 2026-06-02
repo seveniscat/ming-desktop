@@ -4,6 +4,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   LoaderIcon,
+  ShieldAlertIcon,
   XCircleIcon,
 } from "lucide-react";
 import {
@@ -17,6 +18,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { useToolApproval } from "../chat/assistant-ui/tool-approval-context";
 
 const ANIMATION_DURATION = 200;
 
@@ -260,9 +262,58 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   argsText,
   result,
   status,
-}) => {
+  ...rest
+}: any) => {
+  const { respondApproval, pendingApprovals } = useToolApproval();
   const isCancelled =
     status?.type === "incomplete" && status.reason === "cancelled";
+
+  // Render inline approval card for requires-action status
+  if (status?.type === "requires-action") {
+    const toolCallId = (rest as any).toolCallId as string | undefined;
+    const hasApproval = toolCallId && pendingApprovals.has(toolCallId);
+
+    return (
+      <div
+        data-slot="tool-approval-card"
+        className="w-full rounded-lg border border-amber-500/40 bg-amber-500/5 py-3"
+      >
+        <div className="flex items-center gap-2 px-4 mb-2">
+          <ShieldAlertIcon className="size-4 shrink-0 text-amber-500" />
+          <span className="text-sm font-medium">
+            Approval Required: <b>{toolName}</b>
+          </span>
+        </div>
+        {argsText && (
+          <div className="px-4 mb-3">
+            <pre className="text-xs font-mono bg-muted/50 rounded px-3 py-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
+              {argsText}
+            </pre>
+          </div>
+        )}
+        <div className="flex items-center gap-2 px-4">
+          <button
+            onClick={() => {
+              if (toolCallId) respondApproval(toolCallId, true);
+            }}
+            disabled={!hasApproval}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            Allow
+          </button>
+          <button
+            onClick={() => {
+              if (toolCallId) respondApproval(toolCallId, false);
+            }}
+            disabled={!hasApproval}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-[hsl(var(--border))] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40"
+          >
+            Deny
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ToolFallbackRoot

@@ -13,6 +13,7 @@ export enum IPCChannels {
   SKILL_DELETE = 'skill:delete',
   SKILL_UPDATE = 'skill:update',
   SKILL_SYNC_LOCAL = 'skill:sync-local',
+  SKILL_IMPORT_ZIP = 'skill:import-zip',
   SKILL_GET_FILES = 'skill:get-files',
   SKILL_READ_FILE = 'skill:read-file',
   SKILL_WRITE_FILE = 'skill:write-file',
@@ -87,6 +88,7 @@ export enum IPCChannels {
 
   // Streaming 相关
   CONVERSATION_STREAM_CHUNK = 'conversation:stream-chunk',
+  CONVERSATION_STREAM_REASONING_CHUNK = 'conversation:stream-reasoning-chunk',
   CONVERSATION_STREAM_END = 'conversation:stream-end',
   CONVERSATION_STREAM_ERROR = 'conversation:stream-error',
   CONVERSATION_STREAM_TOOL_EVENT = 'conversation:stream-tool-event',
@@ -140,4 +142,10 @@ export enum IPCChannels {
   MEMORY_DELETE = 'memory:delete',
   MEMORY_PREVIEW = 'memory:preview',
   MEMORY_SEARCH = 'memory:search',
+
+  // Update 相关
+  UPDATE_CHECK = 'update:check',
+  UPDATE_DOWNLOAD = 'update:download',
+  UPDATE_INSTALL = 'update:install',
+  UPDATE_STATUS_EVENT = 'update:status-event',
 }

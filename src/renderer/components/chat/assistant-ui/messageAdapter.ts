@@ -1,35 +1,36 @@
 import type { ThreadMessageLike } from '@assistant-ui/react';
-import type { Message } from '../types';
+import type { Message, ToolCallRecord } from '../types';
 
 let nextId = 1;
 
 /**
- * Parse <think>...</think> tags from content string (backward compat for old messages).
+ * Parse <think ...</think tags from content string (backward compat for old messages).
  * Returns extracted reasoning text and remaining content.
  */
 function parseThinkTags(content: string): { reasoning?: string; text: string } {
-  const match = content.match(/<think>([\s\S]*?)<\/think>\n?/);
+  const match = content.match(/<think([\s\S]*?)<\/think>\n?/);
   if (!match) return { text: content };
   const reasoning = match[1].trim();
-  const text = content.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+  const text = content.replace(/<think[\s\S]*?<\/think>\n?/g, '').trim();
   return { reasoning: reasoning || undefined, text };
 }
 
 /**
  * Convert a native Message to assistant-ui's ThreadMessageLike format.
  *
- * For assistant messages with reasoning, emits a reasoning part followed by a text part.
- * Falls back to parsing <think> tags from content for backward compatibility.
+ * For assistant messages:
+ * - Emits reasoning parts, tool-call parts, and text parts in order.
+ * - Falls back to parsing <think tags from content for backward compatibility.
  */
 export function toThreadMessageLike(msg: Message): ThreadMessageLike {
   if (msg.role === 'assistant') {
-    const parts: Array<{ type: 'reasoning'; text: string } | { type: 'text'; text: string }> = [];
+    const parts: ThreadMessageLike['content'] = [];
 
     let reasoning = msg.reasoningContent;
     let textContent = msg.content;
 
-    // Backward compat: parse <think> tags from old messages
-    if (!reasoning && msg.content.includes('<think>')) {
+    // Backward compat: parse <think tags from old messages
+    if (!reasoning && msg.content.includes('<think')) {
       const parsed = parseThinkTags(msg.content);
       reasoning = parsed.reasoning;
       textContent = parsed.text;
@@ -38,6 +39,21 @@ export function toThreadMessageLike(msg: Message): ThreadMessageLike {
     if (reasoning) {
       parts.push({ type: 'reasoning', text: reasoning });
     }
+
+    // Add tool-call parts
+    if (msg.toolCalls?.length) {
+      for (const tc of msg.toolCalls) {
+        parts.push({
+          type: 'tool-call',
+          toolName: tc.toolName,
+          toolCallId: tc.id,
+          argsText: tc.argsText || (tc.args ? JSON.stringify(tc.args, null, 2) : undefined),
+          result: tc.result,
+          status: { type: tc.status },
+        } as any);
+      }
+    }
+
     if (textContent) {
       parts.push({ type: 'text', text: textContent });
     }
@@ -47,7 +63,7 @@ export function toThreadMessageLike(msg: Message): ThreadMessageLike {
       content: parts,
       id: `msg-${nextId++}`,
       createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-      status: msg.content === '' ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const },
+      status: msg.content === '' && !msg.toolCalls?.length ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const },
     };
   }
 
@@ -115,6 +131,30 @@ export function appendStreamError(
         ? `${last.content}\n\nError: ${error}`
         : `Error: ${error}`,
     };
+  }
+  return updated;
+}
+
+/**
+ * Upsert a ToolCallRecord into the last assistant message's toolCalls array.
+ * Returns a new array (immutable update).
+ */
+export function upsertToolCall(
+  messages: Message[],
+  record: ToolCallRecord,
+): Message[] {
+  const updated = [...messages];
+  const last = updated[updated.length - 1];
+  if (last && last.role === 'assistant') {
+    const existing = last.toolCalls ?? [];
+    const idx = existing.findIndex((tc) => tc.id === record.id);
+    const toolCalls = [...existing];
+    if (idx >= 0) {
+      toolCalls[idx] = record;
+    } else {
+      toolCalls.push(record);
+    }
+    updated[updated.length - 1] = { ...last, toolCalls };
   }
   return updated;
 }

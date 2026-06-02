@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Home, LayoutDashboard, MessageSquare, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug, Cable, Activity, Brain } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeProvider';
@@ -26,6 +26,17 @@ const navItems = [
 export default function NavRail({ activeTab, onTabChange }: NavRailProps) {
   const { theme, setTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
+
+  // 订阅更新状态，标记是否有已下载的新版本
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.updater?.onStatusChange((data: any) => {
+      setHasUpdate(data.status === 'available' || data.status === 'downloaded');
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
 
   const cycleTheme = () => {
     const next = theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark';
@@ -121,6 +132,13 @@ export default function NavRail({ activeTab, onTabChange }: NavRailProps) {
           )}
           <Settings size={18} className="relative z-10 shrink-0" />
           {!collapsed && <span className="relative z-10">Settings</span>}
+          {/* Update badge */}
+          {hasUpdate && (
+            <span className={cn(
+              'absolute rounded-full bg-primary',
+              collapsed ? 'top-1 right-0.5 w-2.5 h-2.5' : 'top-1.5 left-7 w-2 h-2'
+            )} />
+          )}
         </button>
 
         {/* Action buttons row */}
@@ -156,8 +174,17 @@ export default function NavRail({ activeTab, onTabChange }: NavRailProps) {
 
         {/* Version */}
         {!collapsed && (
-          <div className="px-2.5 pt-1 pb-1">
+          <div className="px-2.5 pt-1 pb-1 flex items-center gap-1.5">
             <span className="text-[10px] text-muted-foreground">铭 v0.1.0</span>
+            {hasUpdate && (
+              <button
+                type="button"
+                onClick={() => onTabChange('settings')}
+                className="text-[10px] text-primary hover:underline"
+              >
+                New update
+              </button>
+            )}
           </div>
         )}
       </div>

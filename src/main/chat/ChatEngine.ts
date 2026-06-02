@@ -31,6 +31,7 @@ export interface ChatResult {
 
 export interface ChatCallbacks {
   onChunk: (text: string) => void;
+  onReasoningChunk: (text: string) => void;
   onToolEvent: (event: ToolStreamEvent) => void;
   onDebug: (event: DebugModelCall) => void;
   onEnd: (result: ChatResult) => void;
@@ -82,7 +83,7 @@ export class ChatEngine {
         const result = await this.llmManager.chatStreamWithTools(
           providerId, messages, resolvedModel,
           undefined, callbacks.onChunk, callbacks.onDebug, signal,
-          req.conversationId,
+          req.conversationId, callbacks.onReasoningChunk,
         );
         fullContent = result.fullContent;
         reasoningContent = result.reasoningContent || '';
@@ -101,6 +102,8 @@ export class ChatEngine {
           callbacks.onChunk,
           callbacks.onDebug,
           signal,
+          undefined,
+          callbacks.onReasoningChunk,
         );
 
         fullContent += result.fullContent;

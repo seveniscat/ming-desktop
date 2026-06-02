@@ -25,8 +25,10 @@ export interface AgentConfig {
 export interface SkillParameter {
   name: string;
   label: string;
-  type: 'select';
-  options: { label: string; value: string }[];
+  type: 'select' | 'text' | 'boolean';
+  options?: { label: string; value: string }[];
+  placeholder?: string;
+  default?: string | boolean;
 }
 
 export interface Skill {

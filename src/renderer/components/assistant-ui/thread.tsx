@@ -3,6 +3,9 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
+import ComposerParameterCard from "@/components/chat/ComposerParameterCard";
+import ComposerVariableCard from "@/components/chat/ComposerVariableCard";
+import type { PendingParameterSkill, PendingVariablePrompt } from "@/components/chat/assistant-ui/AssistantThread";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import {
   Reasoning,
@@ -54,9 +57,23 @@ import type { FC } from "react";
 
 interface ThreadProps {
   commands?: Unstable_SlashCommand[];
+  pendingParameterSkill?: PendingParameterSkill | null;
+  pendingVariablePrompt?: PendingVariablePrompt | null;
+  onApplySkillParameters?: (values: Record<string, string>) => void;
+  onCancelSkillParameters?: () => void;
+  onApplyVariableValues?: (values: Record<string, string>) => void;
+  onCancelVariableFill?: () => void;
 }
 
-export const Thread: FC<ThreadProps> = ({ commands }) => {
+export const Thread: FC<ThreadProps> = ({
+  commands,
+  pendingParameterSkill,
+  pendingVariablePrompt,
+  onApplySkillParameters,
+  onCancelSkillParameters,
+  onApplyVariableValues,
+  onCancelVariableFill,
+}) => {
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root flex h-full flex-col bg-background"
@@ -87,7 +104,15 @@ export const Thread: FC<ThreadProps> = ({ commands }) => {
 
           <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-[var(--composer-radius)] bg-background pb-4 md:pb-6">
             <ThreadScrollToBottom />
-            <Composer commands={commands} />
+            <Composer
+              commands={commands}
+              pendingParameterSkill={pendingParameterSkill}
+              pendingVariablePrompt={pendingVariablePrompt}
+              onApplySkillParameters={onApplySkillParameters}
+              onCancelSkillParameters={onCancelSkillParameters}
+              onApplyVariableValues={onApplyVariableValues}
+              onCancelVariableFill={onCancelVariableFill}
+            />
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
@@ -194,7 +219,23 @@ const SlashCommandItem: FC<{
   );
 };
 
-const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
+const Composer: FC<{
+  commands?: Unstable_SlashCommand[];
+  pendingParameterSkill?: PendingParameterSkill | null;
+  pendingVariablePrompt?: PendingVariablePrompt | null;
+  onApplySkillParameters?: (values: Record<string, string>) => void;
+  onCancelSkillParameters?: () => void;
+  onApplyVariableValues?: (values: Record<string, string>) => void;
+  onCancelVariableFill?: () => void;
+}> = ({
+  commands,
+  pendingParameterSkill,
+  pendingVariablePrompt,
+  onApplySkillParameters,
+  onCancelSkillParameters,
+  onApplyVariableValues,
+  onCancelVariableFill,
+}) => {
   const slash = unstable_useSlashCommandAdapter({
     commands: commands ?? [],
     removeOnExecute: true,
@@ -227,6 +268,21 @@ const Composer: FC<{ commands?: Unstable_SlashCommand[] }> = ({ commands }) => {
             className="flex w-full flex-col gap-2 rounded-[var(--composer-radius)] border bg-background p-[var(--composer-padding)] transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
           >
             <ComposerAttachments />
+            {pendingParameterSkill && (
+              <ComposerParameterCard
+                skillName={pendingParameterSkill.skillName}
+                parameters={pendingParameterSkill.parameters}
+                onConfirm={onApplySkillParameters ?? (() => {})}
+                onCancel={onCancelSkillParameters ?? (() => {})}
+              />
+            )}
+            {pendingVariablePrompt && (
+              <ComposerVariableCard
+                variables={pendingVariablePrompt.variables}
+                onConfirm={onApplyVariableValues ?? (() => {})}
+                onCancel={onCancelVariableFill ?? (() => {})}
+              />
+            )}
             <ComposerPrimitive.Input
               placeholder="Send a message... (type / for commands)"
               className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"

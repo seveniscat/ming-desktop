@@ -33,6 +33,7 @@ import { scanBundles, type DetectedLibrary } from './techstack/bundleScanner';
 import { ChatService } from './chat/ChatService';
 import { MCPManager } from './mcp/MCPManager';
 import { MemoryManager } from './services/MemoryManager';
+import { UpdateService } from './updater/UpdateService';
 import type { DebugLogEntry, DebugModelCall } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -49,6 +50,7 @@ let promptTemplateManager: PromptTemplateManager;
 const debugLogService = new DebugLogService();
 let mcpManager: MCPManager;
 let memoryManager: MemoryManager;
+let updateService: UpdateService;
 
 // 开发环境检测：在 electron 开发模式下 NODE_ENV 可能未设置
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
@@ -207,6 +209,9 @@ async function initializeServices(): Promise<void> {
   // Sync MCP tools into ToolExecutor so they're available in chat
   syncMcpTools();
 
+  // 初始化 Update Service
+  updateService = new UpdateService();
+
   Logger.info('All services initialized successfully');
 }
 
@@ -262,6 +267,10 @@ function setupIPCHandlers(): void {
 
   ipcMain.handle(IPCChannels.SKILL_SYNC_LOCAL, async () => {
     return skillManager.syncLocalSkills();
+  });
+
+  ipcMain.handle(IPCChannels.SKILL_IMPORT_ZIP, async (_, zipPath: string) => {
+    return skillManager.importZip(zipPath);
   });
 
   ipcMain.handle(IPCChannels.SKILL_GET_FILES, async (_, skillId: string) => {
@@ -959,6 +968,22 @@ function setupIPCHandlers(): void {
     return memoryManager.search(query, limit);
   });
 
+  // Update 相关
+  ipcMain.handle(IPCChannels.UPDATE_CHECK, async () => {
+    if (!updateService) return { hasUpdate: false };
+    return updateService.checkForUpdates();
+  });
+
+  ipcMain.handle(IPCChannels.UPDATE_DOWNLOAD, async () => {
+    if (!updateService) return;
+    await updateService.downloadUpdate();
+  });
+
+  ipcMain.handle(IPCChannels.UPDATE_INSTALL, async () => {
+    if (!updateService) return;
+    updateService.quitAndInstall();
+  });
+
   Logger.info('IPC handlers registered');
 }
 
@@ -1535,6 +1560,19 @@ app.whenReady().then(async () => {
   await initializeServices();
   setupIPCHandlers();
   createWindow();
+
+  // 自动检查更新（仅生产环境，且用户开启了 autoUpdate）
+  if (!isDev && updateService) {
+    const autoUpdateEnabled = configManager.get('autoUpdate') !== false;
+    if (autoUpdateEnabled) {
+      // 延迟 5 秒检查，避免影响启动速度
+      setTimeout(() => {
+        updateService.checkForUpdates().catch((err) => {
+          Logger.warn('[AutoUpdate] Check failed:', err);
+        });
+      }, 5000);
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

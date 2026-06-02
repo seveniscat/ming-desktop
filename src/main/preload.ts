@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (skillId: string) =>
       ipcRenderer.invoke(IPCChannels.SKILL_DELETE, skillId),
     syncLocal: () => ipcRenderer.invoke(IPCChannels.SKILL_SYNC_LOCAL),
+    importZip: (zipPath: string) => ipcRenderer.invoke(IPCChannels.SKILL_IMPORT_ZIP, zipPath),
     getFiles: (skillId: string) => ipcRenderer.invoke(IPCChannels.SKILL_GET_FILES, skillId),
     readFile: (skillId: string, filePath: string) => ipcRenderer.invoke(IPCChannels.SKILL_READ_FILE, skillId, filePath),
     writeFile: (skillId: string, filePath: string, content: string) => ipcRenderer.invoke(IPCChannels.SKILL_WRITE_FILE, skillId, filePath, content),
@@ -65,6 +66,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const listener = (_event: any, data: any) => callback(data);
       ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_CHUNK, listener);
       return () => ipcRenderer.removeListener(IPCChannels.CONVERSATION_STREAM_CHUNK, listener);
+    },
+    onStreamReasoningChunk: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CONVERSATION_STREAM_REASONING_CHUNK, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CONVERSATION_STREAM_REASONING_CHUNK, listener);
     },
     onStreamEnd: (callback: (data: any) => void) => {
       const listener = (_event: any, data: any) => callback(data);
@@ -234,6 +240,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     preview: () => ipcRenderer.invoke(IPCChannels.MEMORY_PREVIEW),
     search: (query: string, limit?: number) => ipcRenderer.invoke(IPCChannels.MEMORY_SEARCH, query, limit),
   },
+
+  // Update API
+  updater: {
+    check: () => ipcRenderer.invoke(IPCChannels.UPDATE_CHECK),
+    download: () => ipcRenderer.invoke(IPCChannels.UPDATE_DOWNLOAD),
+    install: () => ipcRenderer.invoke(IPCChannels.UPDATE_INSTALL),
+    onStatusChange: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.UPDATE_STATUS_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.UPDATE_STATUS_EVENT, listener);
+    },
+  },
 });
 
 // 类型定义
@@ -251,6 +269,7 @@ export interface ElectronAPI {
     update: (skillId: string, updates: any) => Promise<void>;
     delete: (skillId: string) => Promise<void>;
     syncLocal: () => Promise<any>;
+    importZip: (zipPath: string) => Promise<{ skillId: string; skillName: string }>;
     getFiles: (skillId: string) => Promise<any[]>;
     readFile: (skillId: string, filePath: string) => Promise<string>;
     writeFile: (skillId: string, filePath: string, content: string) => Promise<void>;
@@ -273,6 +292,7 @@ export interface ElectronAPI {
     chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[]) => void;
     abort: (conversationId: string) => void;
     onStreamChunk: (callback: (data: any) => void) => () => void;
+    onStreamReasoningChunk: (callback: (data: any) => void) => () => void;
     onStreamEnd: (callback: (data: any) => void) => () => void;
     onStreamError: (callback: (data: any) => void) => () => void;
     onStreamToolEvent: (callback: (data: any) => void) => () => void;
@@ -372,5 +392,11 @@ export interface ElectronAPI {
     delete: (id: string) => Promise<void>;
     preview: () => Promise<{ text: string; tokens: number }>;
     search: (query: string, limit?: number) => Promise<any[]>;
+  };
+  updater: {
+    check: () => Promise<{ hasUpdate: boolean; version?: string; releaseNotes?: string }>;
+    download: () => Promise<void>;
+    install: () => void;
+    onStatusChange: (callback: (data: any) => void) => () => void;
   };
 }
