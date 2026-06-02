@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (skillId: string) =>
       ipcRenderer.invoke(IPCChannels.SKILL_DELETE, skillId),
     syncLocal: () => ipcRenderer.invoke(IPCChannels.SKILL_SYNC_LOCAL),
+    getFiles: (skillId: string) => ipcRenderer.invoke(IPCChannels.SKILL_GET_FILES, skillId),
+    readFile: (skillId: string, filePath: string) => ipcRenderer.invoke(IPCChannels.SKILL_READ_FILE, skillId, filePath),
+    writeFile: (skillId: string, filePath: string, content: string) => ipcRenderer.invoke(IPCChannels.SKILL_WRITE_FILE, skillId, filePath, content),
+    deleteFile: (skillId: string, filePath: string) => ipcRenderer.invoke(IPCChannels.SKILL_DELETE_FILE, skillId, filePath),
   },
 
   // Prompt API
@@ -364,10 +368,6 @@ export interface ElectronAPI {
     create: (data: any) => Promise<any>;
     update: (id: string, data: any) => Promise<any>;
     delete: (id: string) => Promise<void>;
-    preview: () => Promise<{ text: string; tokens: number }>;
-    search: (query: string, limit?: number) => Promise<any[]>;
-  };
-}
     preview: () => Promise<{ text: string; tokens: number }>;
     search: (query: string, limit?: number) => Promise<any[]>;
   };

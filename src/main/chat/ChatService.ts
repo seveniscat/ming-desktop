@@ -39,6 +39,7 @@ export class ChatService {
         return rows.reverse().map(r => ({ role: r.role, content: r.content, timestamp: r.timestamp }));
       },
       (recentMessages: string[]) => memoryManager.formatMemoriesForPromptWithContext(recentMessages),
+      (skillId: string) => skillManager.getSkillPrompt(skillId),
     );
   }
 

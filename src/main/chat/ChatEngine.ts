@@ -48,6 +48,7 @@ export class ChatEngine {
     private loadSkills: (ids: string[]) => Skill[],
     private loadHistory: (conversationId: string, limit: number) => ChatMessage[],
     private getMemoryPrompt: (recentMessages: string[]) => string,
+    private getSkillPrompt?: (skillId: string) => string,
   ) {}
 
   async chatStream(
@@ -207,5 +208,4 @@ export class ChatEngine {
 
     return results;
   }
-}
 }
