@@ -57,7 +57,7 @@ export function runMigrations(): void {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT DEFAULT '',
-      prompt TEXT NOT NULL,
+      prompt TEXT,
       enabled INTEGER DEFAULT 1,
       source_path TEXT,
       source_type TEXT,
@@ -164,7 +164,7 @@ export function runMigrations(): void {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         description TEXT DEFAULT '',
-        prompt TEXT NOT NULL,
+        prompt TEXT,
         enabled INTEGER DEFAULT 1,
         source_path TEXT,
         source_type TEXT,
@@ -560,5 +560,55 @@ export function runMigrations(): void {
     // Mark migration as done to prevent errors on next startup
     // (Manual migration script has already completed the migration)
     db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(migration21Name);
+  }
+
+  // Migration: allow NULL prompt in skills (prompt is now read from SKILL.md files)
+  const migration22Name = 'allow-null-skill-prompt';
+  const applied22 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration22Name);
+  if (!applied22) {
+    try {
+      // Check current table structure
+      const columns = db.prepare("PRAGMA table_info(skills)").all() as any[];
+      const hasFolderPath = columns.some(col => col.name === 'folder_path');
+      const hasAutoMessage = columns.some(col => col.name === 'auto_message');
+      const hasParameters = columns.some(col => col.name === 'parameters');
+      
+      // Build column list based on what exists
+      const selectColumns = [
+        'id', 'name', 'description', 'prompt', 'enabled', 
+        'source_path', 'source_type',
+        hasFolderPath ? 'folder_path' : "'' as folder_path",
+        hasAutoMessage ? 'auto_message' : 'NULL as auto_message',
+        hasParameters ? 'parameters' : 'NULL as parameters',
+        'created_at', 'updated_at'
+      ].join(', ');
+      
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS skills_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT DEFAULT '',
+          prompt TEXT,
+          enabled INTEGER DEFAULT 1,
+          source_path TEXT,
+          source_type TEXT,
+          folder_path TEXT,
+          auto_message TEXT DEFAULT NULL,
+          parameters TEXT DEFAULT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO skills_new (id, name, description, prompt, enabled, source_path, source_type, folder_path, auto_message, parameters, created_at, updated_at)
+          SELECT ${selectColumns} FROM skills;
+        DROP TABLE skills;
+        ALTER TABLE skills_new RENAME TO skills;
+      `);
+      db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration22Name);
+      console.log('Migration 22 applied successfully: prompt field is now nullable');
+    } catch (error) {
+      console.error('Migration 22 failed:', error);
+      // If migration fails, still mark it as done to prevent infinite loop
+      db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(migration22Name);
+    }
   }
 }

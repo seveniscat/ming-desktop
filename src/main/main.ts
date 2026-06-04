@@ -289,8 +289,8 @@ function setupIPCHandlers(): void {
     return skillManager.deleteSkillFile(skillId, filePath);
   });
 
-  ipcMain.handle(IPCChannels.SKILL_OPEN_IN_IDE, async (_, skillId: string) => {
-    return skillManager.openInIDE(skillId);
+  ipcMain.handle(IPCChannels.SKILL_OPEN_IN_IDE, async (_, skillId: string, ideType?: string) => {
+    return skillManager.openInIDE(skillId, ideType);
   });
 
   // Prompt 相关

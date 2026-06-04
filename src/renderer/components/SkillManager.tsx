@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Plus, Eye, Trash2, Sparkles, ToggleLeft, ToggleRight, RefreshCw, FolderOpen, Upload } from 'lucide-react';
+import { Plus, Eye, Trash2, Sparkles, ToggleLeft, ToggleRight, RefreshCw, FolderOpen, Upload, FileText, Calendar, ExternalLink } from 'lucide-react';
 import type { Skill, Agent, SkillSyncResult } from '../../shared/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -34,6 +41,8 @@ export default function SkillManager() {
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [importing, setImporting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [skillFileCounts, setSkillFileCounts] = useState<Map<string, number>>(new Map());
+  const [skillIDEs, setSkillIDEs] = useState<Map<string, string>>(new Map());
 
   const handleImportZip = useCallback(async (filePath: string) => {
     setImporting(true);
@@ -96,6 +105,19 @@ export default function SkillManager() {
       ]);
       setSkills(skillList || []);
       setAgents(agentList || []);
+      
+      // Load file counts for each skill
+      const fileCounts = new Map<string, number>();
+      for (const skill of skillList || []) {
+        try {
+          const files = await window.electronAPI.skills.getFiles(skill.id);
+          fileCounts.set(skill.id, files?.length || 0);
+        } catch {
+          fileCounts.set(skill.id, 0);
+        }
+      }
+      setSkillFileCounts(fileCounts);
+      
       return skillList || [];
     } catch (error) {
       console.error('Failed to load skills:', error);
@@ -183,6 +205,19 @@ export default function SkillManager() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleOpenInIDE = async (skillId: string) => {
+    const ideType = skillIDEs.get(skillId) || 'cursor';
+    try {
+      await window.electronAPI.skills.openInIDE(skillId, ideType);
+    } catch (error) {
+      console.error('Failed to open in IDE:', error);
+    }
+  };
+
+  const handleIDEChange = (skillId: string, ideType: string) => {
+    setSkillIDEs(prev => new Map(prev).set(skillId, ideType));
   };
 
   return (
@@ -300,27 +335,36 @@ export default function SkillManager() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div className="rounded-xl bg-[var(--surface-hover)] border border-[hsl(var(--border))] p-3">
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-6">
-                          {skill.prompt}
-                        </p>
+                    <div className="space-y-3">
+                      {/* File count and folder path */}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <FileText size={12} />
+                          <span>{skillFileCounts.get(skill.id) || 0} 个文件</span>
+                        </div>
+                        {skill.folderPath && (
+                          <div className="flex items-center gap-1.5 truncate">
+                            <FolderOpen size={12} className="flex-shrink-0" />
+                            <span className="truncate" title={skill.folderPath}>
+                              {skill.folderPath.split('/').slice(-2).join('/')}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
+                      {/* Usage and update time */}
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <span className="text-muted-foreground">
                           已被 {usageMap.get(skill.id) || 0} 个 Agent 使用
                         </span>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Calendar size={12} />
+                          <span>{new Date(skill.updatedAt).toLocaleDateString('zh-CN')}</span>
+                        </div>
                       </div>
 
-                      {skill.sourcePath && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <FolderOpen size={12} className="flex-shrink-0" />
-                          <span className="truncate">{skill.sourcePath}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2 pt-1">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -330,11 +374,37 @@ export default function SkillManager() {
                           <Eye size={14} />
                           预览
                         </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenInIDE(skill.id)}
+                            className="flex items-center gap-1.5 h-8"
+                          >
+                            <ExternalLink size={14} />
+                            {skillIDEs.get(skill.id) === 'vscode' ? 'VS Code' : 
+                             skillIDEs.get(skill.id) === 'warp' ? 'Warp' :
+                             skillIDEs.get(skill.id) === 'antigravity' ? 'Antigravity' :
+                             skillIDEs.get(skill.id) === 'cursor' ? 'Cursor' : '打开'}
+                          </Button>
+                          <Select value={skillIDEs.get(skill.id) || 'cursor'} onValueChange={(value) => handleIDEChange(skill.id, value)}>
+                            <SelectTrigger className="w-[40px] h-8 px-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cursor">Cursor</SelectItem>
+                              <SelectItem value="vscode">VS Code</SelectItem>
+                              <SelectItem value="warp">Warp</SelectItem>
+                              <SelectItem value="antigravity">Antigravity</SelectItem>
+                              <SelectItem value="default">系统默认</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(skill.id, skill.name)}
-                          className="flex items-center gap-1.5 text-muted-foreground hover:text-destructive"
+                          className="flex items-center gap-1.5 text-muted-foreground hover:text-destructive ml-auto"
                         >
                           <Trash2 size={14} />
                           删除

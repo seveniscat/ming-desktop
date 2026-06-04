@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFile } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { app, shell } from 'electron';
 import { Skill, SkillConfig, SkillParameter, SkillSyncResult, SkillFile } from '../../shared/types';
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
@@ -210,7 +210,11 @@ export class SkillManager extends EventEmitter {
     const skill = this.skills.get(skillId);
     if (!skill) return [];
 
-    return this.listFilesRecursively(skill.folderPath, skill.folderPath);
+    const files = this.listFilesRecursively(skill.folderPath, skill.folderPath);
+    Logger.info(`getSkillFiles for ${skillId}: found ${files.length} files in ${skill.folderPath}`);
+    Logger.info(`Files: ${files.map(f => f.path).join(', ')}`);
+    
+    return files;
   }
 
   async readSkillFile(skillId: string, filePath: string): Promise<string> {
@@ -268,30 +272,83 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
-   * Open the skill folder in Cursor IDE (fallback to shell.openPath if Cursor not available)
+   * Open the skill folder in specified IDE
+   * @param skillId - Skill ID
+   * @param ideType - IDE type: 'cursor', 'vscode', 'warp', 'antigravity', or 'default'
    */
-  async openInIDE(skillId: string): Promise<void> {
+  async openInIDE(skillId: string, ideType?: string): Promise<void> {
     const skill = this.skills.get(skillId);
     if (!skill) throw new Error('Skill not found');
 
-    if (!fs.existsSync(skill.folderPath)) {
-      throw new Error('Skill folder does not exist');
+    // Ensure folderPath exists
+    let folderPath = skill.folderPath;
+    if (!folderPath) {
+      // Generate folder path if not set
+      folderPath = path.join(this.getSkillsRoot(), skill.id);
+      // Update skill with the folder path
+      await this.updateSkill(skillId, { folderPath });
+      Logger.info(`Generated folder path for skill ${skillId}: ${folderPath}`);
     }
 
-    // Try to open with Cursor first
-    exec(`cursor "${skill.folderPath}"`, (error) => {
-      if (error) {
-        // Cursor not found, try code (VS Code), then fallback to shell.openPath
-        exec(`code "${skill.folderPath}"`, (error2) => {
-          if (error2) {
-            // Fallback to system default
-            shell.openPath(skill.folderPath);
+    // Create folder if it doesn't exist
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+      Logger.info(`Created skill folder: ${folderPath}`);
+      
+      // Create SKILL.md if it doesn't exist
+      const skillMdPath = path.join(folderPath, 'SKILL.md');
+      if (!fs.existsSync(skillMdPath)) {
+        const frontmatter = `---\nname: ${skill.name}\ndescription: ${skill.description || ''}\n---\n\n`;
+        fs.writeFileSync(skillMdPath, frontmatter, 'utf-8');
+        Logger.info(`Created SKILL.md: ${skillMdPath}`);
+      }
+    }
+
+    const selectedIDE = ideType || 'default';
+    Logger.info(`Opening skill folder in ${selectedIDE}: ${folderPath}`);
+
+    switch (selectedIDE) {
+      case 'cursor':
+        exec(`cursor "${folderPath}"`, (error) => {
+          if (error) {
+            Logger.error('Failed to open with Cursor, falling back to system default', error);
+            shell.openPath(folderPath);
           }
         });
-      }
-    });
+        break;
 
-    Logger.info(`Opening skill folder in IDE: ${skill.folderPath}`);
+      case 'vscode':
+        exec(`code "${folderPath}"`, (error) => {
+          if (error) {
+            Logger.error('Failed to open with VS Code, falling back to system default', error);
+            shell.openPath(folderPath);
+          }
+        });
+        break;
+
+      case 'warp':
+        exec(`warp "${folderPath}"`, (error) => {
+          if (error) {
+            Logger.error('Failed to open with Warp, falling back to system default', error);
+            shell.openPath(folderPath);
+          }
+        });
+        break;
+
+      case 'antigravity':
+        exec(`antigravity "${folderPath}"`, (error) => {
+          if (error) {
+            Logger.error('Failed to open with Antigravity, falling back to system default', error);
+            shell.openPath(folderPath);
+          }
+        });
+        break;
+
+      default:
+        // Use system default
+        shell.openPath(folderPath);
+        break;
+    }
   }
 
   private listFilesRecursively(dir: string, baseDir: string): SkillFile[] {
