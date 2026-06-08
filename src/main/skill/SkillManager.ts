@@ -9,6 +9,7 @@ import { Skill, SkillConfig, SkillParameter, SkillSyncResult, SkillFile } from '
 import { DEFAULT_DAILY_REPORTER_SYSTEM_PROMPT, DEFAULT_WEEKLY_REPORTER_SYSTEM_PROMPT } from '../../shared/dailyReportDefaults';
 import { Logger } from '../utils/Logger';
 import { getDatabase } from '../database/connection';
+import type { ConfigManager } from '../services/ConfigManager';
 
 interface LocalSkillCandidate {
   id: string;
@@ -17,11 +18,18 @@ interface LocalSkillCandidate {
   prompt: string;
   folderPath: string;
   sourceType: string;
+  priority: number;
 }
 
 export class SkillManager extends EventEmitter {
   private skills: Map<string, Skill> = new Map();
   private skillsCache: Map<string, string> = new Map(); // skillId -> prompt content cache
+  private configManager: ConfigManager | null;
+
+  constructor(configManager?: ConfigManager) {
+    super();
+    this.configManager = configManager ?? null;
+  }
 
   getSkillsRoot(): string {
     return path.join(app.getPath('userData'), 'skills');
@@ -481,27 +489,41 @@ export class SkillManager extends EventEmitter {
     const db = getDatabase();
     let created = 0;
     let updated = 0;
+    let skipped = 0;
     const now = new Date().toISOString();
 
     for (const candidate of candidates) {
       const existing = this.skills.get(candidate.id);
 
       if (existing) {
-        const next: Skill = {
-          ...existing,
-          name: candidate.name,
-          description: candidate.description,
-          folderPath: candidate.folderPath,
-          sourceType: candidate.sourceType,
-          updatedAt: now,
-        };
-        this.skills.set(next.id, next);
-        db.prepare(`
-          UPDATE skills
-          SET name = ?, description = ?, folder_path = ?, source_type = ?, updated_at = ?
-          WHERE id = ?
-        `).run(next.name, next.description, next.folderPath, next.sourceType, next.updatedAt, next.id);
-        updated++;
+        // Change detection: skip if nothing changed
+        const changed =
+          existing.name !== candidate.name ||
+          existing.description !== candidate.description ||
+          existing.folderPath !== candidate.folderPath ||
+          existing.sourceType !== candidate.sourceType;
+
+        if (changed) {
+          const next: Skill = {
+            ...existing,
+            name: candidate.name,
+            description: candidate.description,
+            folderPath: candidate.folderPath,
+            sourceType: candidate.sourceType,
+            updatedAt: now,
+          };
+          this.skills.set(next.id, next);
+          db.prepare(`
+            UPDATE skills
+            SET name = ?, description = ?, folder_path = ?, source_type = ?, updated_at = ?
+            WHERE id = ?
+          `).run(next.name, next.description, next.folderPath, next.sourceType, next.updatedAt, next.id);
+          updated++;
+          // Clear cache for updated skills
+          this.skillsCache.delete(candidate.id);
+        } else {
+          skipped++;
+        }
       } else {
         const skill: Skill = {
           id: candidate.id,
@@ -528,19 +550,36 @@ export class SkillManager extends EventEmitter {
           skill.updatedAt
         );
         created++;
+        // Clear cache for new skills
+        this.skillsCache.delete(candidate.id);
       }
-      
-      // Clear cache for synced skills
-      this.skillsCache.delete(candidate.id);
     }
 
-    Logger.info(`Synced local skills: ${created} created, ${updated} updated`);
+    // Orphan cleanup: remove skills whose folder no longer exists on disk
+    const discoveredFolderPaths = new Set(candidates.map(c => c.folderPath));
+    let removed = 0;
+
+    for (const [id, skill] of this.skills.entries()) {
+      // Skip built-in, user-created, and imported skills (managed by app)
+      if (skill.sourceType === 'builtin' || skill.sourceType === 'user' || skill.sourceType === 'imported') continue;
+
+      // If this skill was not discovered and its folder no longer exists, remove it
+      if (!discoveredFolderPaths.has(skill.folderPath) && !fs.existsSync(skill.folderPath)) {
+        this.skills.delete(id);
+        this.skillsCache.delete(id);
+        db.prepare('DELETE FROM skills WHERE id = ?').run(id);
+        removed++;
+      }
+    }
+
+    Logger.info(`Synced local skills: ${created} created, ${updated} updated, ${skipped} skipped, ${removed} removed`);
 
     return {
       total: candidates.length,
       created,
       updated,
-      skipped: 0,
+      skipped,
+      removed,
       skills: this.listSkills(),
     };
   }
@@ -554,6 +593,18 @@ export class SkillManager extends EventEmitter {
       { dir: path.join(codexHome, 'plugins', 'cache'), depth: 9 },
     ];
 
+    // Project-level skill directories from workPaths
+    if (this.configManager) {
+      const workPaths = this.configManager.getWorkPaths();
+      for (const wp of workPaths) {
+        roots.push(
+          { dir: path.join(wp, '.claude', 'skills'), depth: 5 },
+          { dir: path.join(wp, '.cursor', 'skills'), depth: 5 },
+          { dir: path.join(wp, '.agent', 'skills'), depth: 5 },
+        );
+      }
+    }
+
     const seen = new Set<string>();
     const candidates: LocalSkillCandidate[] = [];
 
@@ -566,7 +617,7 @@ export class SkillManager extends EventEmitter {
         try {
           const skillMdPath = path.join(folderPath, 'SKILL.md');
           if (!fs.existsSync(skillMdPath)) continue;
-          
+
           const content = fs.readFileSync(skillMdPath, 'utf-8');
           const parsed = this.parseSkillFile(content, folderPath);
           candidates.push(parsed);
@@ -576,7 +627,16 @@ export class SkillManager extends EventEmitter {
       }
     }
 
-    return candidates.sort((a, b) => a.name.localeCompare(b.name));
+    // Deduplicate by name: keep highest priority (project > global)
+    const byName = new Map<string, LocalSkillCandidate>();
+    for (const c of candidates) {
+      const existing = byName.get(c.name);
+      if (!existing || c.priority > existing.priority) {
+        byName.set(c.name, c);
+      }
+    }
+
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   private findSkillDirectories(rootDir: string, maxDepth: number): string[] {
@@ -613,13 +673,18 @@ export class SkillManager extends EventEmitter {
     const name = metadata.name || path.basename(folderPath);
     const description = metadata.description || '';
 
+    // Stable ID based on skill identity (name + description), not absolute path
+    const stableKey = `${name}::${description}`;
+    const sourceType = this.getSourceType(folderPath);
+
     return {
-      id: `local-${createHash('sha1').update(folderPath).digest('hex').slice(0, 12)}`,
+      id: `local-${createHash('sha1').update(stableKey).digest('hex').slice(0, 12)}`,
       name,
       description,
       prompt: body || content.trim(),
       folderPath,
-      sourceType: this.getSourceType(folderPath),
+      sourceType,
+      priority: this.getSourcePriority(sourceType),
     };
   }
 
@@ -670,7 +735,25 @@ export class SkillManager extends EventEmitter {
     if (normalized.includes('/.codex/plugins/cache/')) return 'plugin';
     if (normalized.includes('/.codex/skills/')) return 'codex';
     if (normalized.includes('/.agents/skills/')) return 'agents';
+    // Project-level skills
+    if (normalized.includes('/.claude/skills/')) return 'project';
+    if (normalized.includes('/.cursor/skills/')) return 'project';
+    if (normalized.includes('/.agent/skills/')) return 'project';
+    // Imported skills (from ZIP)
+    if (normalized.includes('/skills/imported-')) return 'imported';
     return 'local';
+  }
+
+  private getSourcePriority(sourceType: string): number {
+    switch (sourceType) {
+      case 'project': return 10;
+      case 'imported': return 5;
+      case 'codex':
+      case 'agents': return 3;
+      case 'plugin': return 2;
+      case 'codex-system': return 1;
+      default: return 0;
+    }
   }
 
   private ensureBuiltInSkills(): void {

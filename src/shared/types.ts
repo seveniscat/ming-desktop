@@ -65,6 +65,7 @@ export interface SkillSyncResult {
   created: number;
   updated: number;
   skipped: number;
+  removed: number;
   skills: Skill[];
 }
 

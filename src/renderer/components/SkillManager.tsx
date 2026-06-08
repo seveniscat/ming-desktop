@@ -17,6 +17,18 @@ import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import SkillViewer from './SkillViewer';
 
+const sourceTypeLabels: Record<string, string> = {
+  builtin: '内置',
+  user: '用户创建',
+  project: '项目级',
+  imported: '已导入',
+  codex: 'Codex',
+  agents: 'Agents',
+  plugin: '插件',
+  'codex-system': '系统',
+  local: '本地',
+};
+
 interface SkillForm {
   name: string;
   description: string;
@@ -196,9 +208,14 @@ export default function SkillManager() {
       setSkills(result.skills || []);
       const agentList = await window.electronAPI.agents.list();
       setAgents(agentList || []);
-      setSyncMessage(
-        `已同步 ${result.total} 个本地 skill，新增 ${result.created} 个，更新 ${result.updated} 个`
-      );
+      const parts = [
+        `已扫描 ${result.total} 个 skill`,
+        result.created > 0 ? `新增 ${result.created} 个` : null,
+        result.updated > 0 ? `更新 ${result.updated} 个` : null,
+        result.skipped > 0 ? `跳过 ${result.skipped} 个（无变化）` : null,
+        result.removed > 0 ? `移除 ${result.removed} 个（源文件不存在）` : null,
+      ].filter(Boolean).join('，');
+      setSyncMessage(parts);
     } catch (error) {
       console.error('Failed to sync local skills:', error);
       setSyncMessage('同步失败，请查看控制台日志');
@@ -314,8 +331,8 @@ export default function SkillManager() {
                             {skill.enabled ? '启用' : '停用'}
                           </Badge>
                           {skill.sourceType && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              {skill.sourceType}
+                            <Badge variant={skill.sourceType === 'project' ? 'default' : 'secondary'} className="text-[10px]">
+                              {sourceTypeLabels[skill.sourceType] || skill.sourceType}
                             </Badge>
                           )}
                         </div>

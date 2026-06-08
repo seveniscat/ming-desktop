@@ -180,7 +180,7 @@ async function initializeServices(): Promise<void> {
   toolPersistenceManager = new ToolPersistenceManager(toolExecutor);
 
   // 初始化 Skill 管理器
-  skillManager = new SkillManager();
+  skillManager = new SkillManager(configManager);
   await skillManager.initialize();
 
   // 初始化 Prompt Template 管理器
