@@ -196,20 +196,29 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     {
       id: 'daily-report',
       label: '日报',
-      onClick: () => sendProgrammaticMessage({
-        message: '生成今天的工作日报',
-        model: selectedModel || undefined,
-        extraSkillIds: ['builtin-daily-reporter'],
-      }),
+      onClick: async () => {
+        // Refresh git repos before generating report to avoid stale data
+        await window.electronAPI.git.clearCache();
+        await window.electronAPI.git.scanRepos();
+        sendProgrammaticMessage({
+          message: '生成今天的工作日报',
+          model: selectedModel || undefined,
+          extraSkillIds: ['builtin-daily-reporter'],
+        });
+      },
     },
     {
       id: 'weekly-report',
       label: '周报',
-      onClick: () => sendProgrammaticMessage({
-        message: '生成本周的工作周报',
-        model: selectedModel || undefined,
-        extraSkillIds: ['builtin-weekly-reporter'],
-      }),
+      onClick: async () => {
+        await window.electronAPI.git.clearCache();
+        await window.electronAPI.git.scanRepos();
+        sendProgrammaticMessage({
+          message: '生成本周的工作周报',
+          model: selectedModel || undefined,
+          extraSkillIds: ['builtin-weekly-reporter'],
+        });
+      },
     },
   ], [sendProgrammaticMessage, selectedModel]);
 
