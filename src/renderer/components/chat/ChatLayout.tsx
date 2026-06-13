@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { Cpu, X, Square } from 'lucide-react';
 import type { MemorySuggestionEvent } from './assistant-ui/useIpcChatRuntime';
+import type { QuickAction } from '../assistant-ui/thread';
 import MemorySuggestCard from './MemorySuggestCard';
 import { useChatConversations } from './hooks/useChatConversations';
 import { useExecutionState } from './hooks/useExecutionState';
@@ -189,6 +190,28 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
       });
     }
   }, [currentConversationId, activateSkill, setConversations, setCurrentConversationId, sendProgrammaticMessage, selectedModel]);
+
+  // --- Quick actions (daily/weekly report shortcuts) ---
+  const quickActions: QuickAction[] = useMemo(() => [
+    {
+      id: 'daily-report',
+      label: '日报',
+      onClick: () => sendProgrammaticMessage({
+        message: '生成今天的工作日报',
+        model: selectedModel || undefined,
+        extraSkillIds: ['builtin-daily-reporter'],
+      }),
+    },
+    {
+      id: 'weekly-report',
+      label: '周报',
+      onClick: () => sendProgrammaticMessage({
+        message: '生成本周的工作周报',
+        model: selectedModel || undefined,
+        extraSkillIds: ['builtin-weekly-reporter'],
+      }),
+    },
+  ], [sendProgrammaticMessage, selectedModel]);
 
   // --- Slash commands (skills + prompt templates) ---
   const {
@@ -411,6 +434,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
             <div className="flex-1 min-h-0">
               <AssistantThread
                 commands={commands}
+                quickActions={quickActions}
                 pendingParameterSkill={pendingParameterSkill}
                 pendingVariablePrompt={pendingVariablePrompt}
                 onApplySkillParameters={applySkillParameters}

@@ -1,6 +1,7 @@
 import { Thread } from '@/components/assistant-ui/thread';
 import type { Unstable_SlashCommand } from '@assistant-ui/react';
 import type { SkillParameter } from '../../../shared/types';
+import type { QuickAction } from '@/components/assistant-ui/thread';
 
 export interface PendingParameterSkill {
   skillId: string;
@@ -17,6 +18,7 @@ interface AssistantThreadProps {
   commands?: Unstable_SlashCommand[];
   pendingParameterSkill?: PendingParameterSkill | null;
   pendingVariablePrompt?: PendingVariablePrompt | null;
+  quickActions?: QuickAction[];
   onApplySkillParameters?: (values: Record<string, string>) => void;
   onCancelSkillParameters?: () => void;
   onApplyVariableValues?: (values: Record<string, string>) => void;
@@ -27,6 +29,7 @@ export function AssistantThread({
   commands,
   pendingParameterSkill,
   pendingVariablePrompt,
+  quickActions,
   onApplySkillParameters,
   onCancelSkillParameters,
   onApplyVariableValues,
@@ -37,6 +40,7 @@ export function AssistantThread({
       commands={commands}
       pendingParameterSkill={pendingParameterSkill}
       pendingVariablePrompt={pendingVariablePrompt}
+      quickActions={quickActions}
       onApplySkillParameters={onApplySkillParameters}
       onCancelSkillParameters={onCancelSkillParameters}
       onApplyVariableValues={onApplyVariableValues}

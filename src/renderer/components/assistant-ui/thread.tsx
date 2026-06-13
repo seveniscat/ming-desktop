@@ -47,6 +47,7 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  FileTextIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -55,10 +56,18 @@ import {
 import { useEffect, useRef } from "react";
 import type { FC } from "react";
 
+export interface QuickAction {
+  id: string;
+  label: string;
+  icon?: string;
+  onClick: () => void;
+}
+
 interface ThreadProps {
   commands?: Unstable_SlashCommand[];
   pendingParameterSkill?: PendingParameterSkill | null;
   pendingVariablePrompt?: PendingVariablePrompt | null;
+  quickActions?: QuickAction[];
   onApplySkillParameters?: (values: Record<string, string>) => void;
   onCancelSkillParameters?: () => void;
   onApplyVariableValues?: (values: Record<string, string>) => void;
@@ -69,6 +78,7 @@ export const Thread: FC<ThreadProps> = ({
   commands,
   pendingParameterSkill,
   pendingVariablePrompt,
+  quickActions,
   onApplySkillParameters,
   onCancelSkillParameters,
   onApplyVariableValues,
@@ -108,6 +118,7 @@ export const Thread: FC<ThreadProps> = ({
               commands={commands}
               pendingParameterSkill={pendingParameterSkill}
               pendingVariablePrompt={pendingVariablePrompt}
+              quickActions={quickActions}
               onApplySkillParameters={onApplySkillParameters}
               onCancelSkillParameters={onCancelSkillParameters}
               onApplyVariableValues={onApplyVariableValues}
@@ -223,6 +234,7 @@ const Composer: FC<{
   commands?: Unstable_SlashCommand[];
   pendingParameterSkill?: PendingParameterSkill | null;
   pendingVariablePrompt?: PendingVariablePrompt | null;
+  quickActions?: QuickAction[];
   onApplySkillParameters?: (values: Record<string, string>) => void;
   onCancelSkillParameters?: () => void;
   onApplyVariableValues?: (values: Record<string, string>) => void;
@@ -231,6 +243,7 @@ const Composer: FC<{
   commands,
   pendingParameterSkill,
   pendingVariablePrompt,
+  quickActions,
   onApplySkillParameters,
   onCancelSkillParameters,
   onApplyVariableValues,
@@ -268,6 +281,21 @@ const Composer: FC<{
             className="flex w-full flex-col gap-2 rounded-[var(--composer-radius)] border bg-background p-[var(--composer-padding)] transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
           >
             <ComposerAttachments />
+            {quickActions && quickActions.length > 0 && (
+              <div className="flex items-center gap-1.5 px-1">
+                {quickActions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={action.onClick}
+                    className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    <FileTextIcon className="size-3" />
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {pendingParameterSkill && (
               <ComposerParameterCard
                 skillName={pendingParameterSkill.skillName}
