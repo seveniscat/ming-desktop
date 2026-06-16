@@ -103,9 +103,9 @@ async function listEntriesRecursive(
 export function createListDirectoryTool(): ToolEntry {
   return {
     definition: DEFINITION,
-    handler: async (params: Record<string, any>, _ctx?) => {
+    handler: async (params: Record<string, any>, ctx?) => {
       try {
-        const resolvedPath = path.resolve(params.path);
+        const resolvedPath = path.resolve((ctx?.workspace ?? process.cwd()), params.path);
         const recursive = params.recursive === true;
         const globRegex = params.pattern ? globToRegex(params.pattern) : null;
 

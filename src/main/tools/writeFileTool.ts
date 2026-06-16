@@ -34,9 +34,9 @@ export function createWriteFileTool(): ToolEntry {
   return {
     definition: DEFINITION,
     requiresApproval: true,
-    handler: async (params: Record<string, any>, _ctx?) => {
+    handler: async (params: Record<string, any>, ctx?) => {
       try {
-        const resolvedPath = path.resolve(params.path);
+        const resolvedPath = path.resolve((ctx?.workspace ?? process.cwd()), params.path);
         const content = params.content;
         const append = params.append === true;
 

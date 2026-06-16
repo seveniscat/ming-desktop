@@ -37,9 +37,9 @@ const DEFINITION: ToolDefinition = {
 export function createReadFileTool(): ToolEntry {
   return {
     definition: DEFINITION,
-    handler: async (params: Record<string, any>, _ctx?) => {
+    handler: async (params: Record<string, any>, ctx?) => {
       try {
-        const resolvedPath = path.resolve(params.path);
+        const resolvedPath = path.resolve((ctx?.workspace ?? process.cwd()), params.path);
         const encoding = params.encoding || 'utf-8';
 
         const content = await fs.readFile(resolvedPath, encoding as BufferEncoding);

@@ -35,10 +35,10 @@ export function createExecuteCommandTool(
   return {
     definition: DEFINITION,
     requiresApproval: true,
-    handler: async (params: Record<string, any>, _ctx?) => {
+    handler: async (params: Record<string, any>, ctx?) => {
       try {
         const command = params.command;
-        const cwd = params.cwd;
+        const cwd = params.cwd ?? ctx?.workspace;
         const timeout = params.timeout ?? 30000;
 
         const result = await executorService.executeCommand(command, {

@@ -105,9 +105,10 @@ async function searchInDirectory(
 export function createSearchFilesTool(): ToolEntry {
   return {
     definition: DEFINITION,
-    handler: async (params: Record<string, any>, _ctx?) => {
+    handler: async (params: Record<string, any>, ctx?) => {
       try {
-        const searchPath = path.resolve(params.path || process.cwd());
+        const base = ctx?.workspace ?? process.cwd();
+        const searchPath = path.resolve(base, params.path || '.');
         const maxResults = params.maxResults ?? 100;
         const globFilter = params.glob || null;
 
