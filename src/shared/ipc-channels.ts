@@ -93,6 +93,17 @@ export enum IPCChannels {
   CONVERSATION_STREAM_ERROR = 'conversation:stream-error',
   CONVERSATION_STREAM_TOOL_EVENT = 'conversation:stream-tool-event',
 
+  // Coding Agent 相关
+  CODING_SESSION_CREATE = 'coding:session:create',
+  CODING_SESSION_LIST = 'coding:session:list',
+  CODING_SESSION_DISPOSE = 'coding:session:dispose',
+  CODING_SESSION_SEND = 'coding:session:send',
+  CODING_SESSION_STOP = 'coding:session:stop',
+  CODING_STREAM_CHUNK = 'coding:stream-chunk',
+  CODING_STREAM_TOOL_EVENT = 'coding:stream-tool-event',
+  CODING_STREAM_END = 'coding:stream-end',
+  CODING_STREAM_ERROR = 'coding:stream-error',
+
   // Debug 相关
   DEBUG_MODEL_CALL = 'debug:model-call',
   DEBUG_OPEN_PANEL = 'debug:open-panel',

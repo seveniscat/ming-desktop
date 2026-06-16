@@ -38,6 +38,17 @@ interface Window {
       onStreamError: (callback: (data: any) => void) => () => void;
       onStreamToolEvent: (callback: (data: any) => void) => () => void;
     };
+    coding: {
+      create: (workspace: string, model: string, systemPrompt?: string, maxTurns?: number) => Promise<string>;
+      list: () => Promise<any[]>;
+      dispose: (sessionId: string) => Promise<void>;
+      send: (sessionId: string, prompt: string) => void;
+      stop: (sessionId: string) => void;
+      onChunk: (callback: (data: any) => void) => () => void;
+      onToolEvent: (callback: (data: any) => void) => () => void;
+      onEnd: (callback: (data: any) => void) => () => void;
+      onError: (callback: (data: any) => void) => () => void;
+    };
     debug: {
       openPanel: () => Promise<any>;
       getLogs: () => Promise<any>;

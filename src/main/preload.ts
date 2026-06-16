@@ -89,6 +89,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  // Coding Agent API
+  coding: {
+    create: (workspace: string, model: string, systemPrompt?: string, maxTurns?: number) =>
+      ipcRenderer.invoke(IPCChannels.CODING_SESSION_CREATE, workspace, model, systemPrompt, maxTurns),
+    list: () => ipcRenderer.invoke(IPCChannels.CODING_SESSION_LIST),
+    dispose: (sessionId: string) => ipcRenderer.invoke(IPCChannels.CODING_SESSION_DISPOSE, sessionId),
+    send: (sessionId: string, prompt: string) => {
+      ipcRenderer.send(IPCChannels.CODING_SESSION_SEND, sessionId, prompt);
+    },
+    stop: (sessionId: string) => {
+      ipcRenderer.send(IPCChannels.CODING_SESSION_STOP, sessionId);
+    },
+    onChunk: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CODING_STREAM_CHUNK, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CODING_STREAM_CHUNK, listener);
+    },
+    onToolEvent: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CODING_STREAM_TOOL_EVENT, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CODING_STREAM_TOOL_EVENT, listener);
+    },
+    onEnd: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CODING_STREAM_END, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CODING_STREAM_END, listener);
+    },
+    onError: (callback: (data: any) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(IPCChannels.CODING_STREAM_ERROR, listener);
+      return () => ipcRenderer.removeListener(IPCChannels.CODING_STREAM_ERROR, listener);
+    },
+  },
+
   // Debug API
   debug: {
     openPanel: () => ipcRenderer.invoke(IPCChannels.DEBUG_OPEN_PANEL),
@@ -296,6 +330,17 @@ export interface ElectronAPI {
     onStreamEnd: (callback: (data: any) => void) => () => void;
     onStreamError: (callback: (data: any) => void) => () => void;
     onStreamToolEvent: (callback: (data: any) => void) => () => void;
+  };
+  coding: {
+    create: (workspace: string, model: string, systemPrompt?: string, maxTurns?: number) => Promise<string>;
+    list: () => Promise<any[]>;
+    dispose: (sessionId: string) => Promise<void>;
+    send: (sessionId: string, prompt: string) => void;
+    stop: (sessionId: string) => void;
+    onChunk: (callback: (data: any) => void) => () => void;
+    onToolEvent: (callback: (data: any) => void) => () => void;
+    onEnd: (callback: (data: any) => void) => () => void;
+    onError: (callback: (data: any) => void) => () => void;
   };
   llm: {
     listProviders: () => Promise<any[]>;
