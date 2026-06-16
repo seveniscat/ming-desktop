@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { ChatMessage, ToolDefinition, ToolCall } from '../../../shared/types';
 import { ILLMProviderModule, ChatStreamResult, StreamWithToolsResult, StreamToolCall } from './types';
+import { serializeOpenAIMessages } from './serialize-openai';
 
 export class OpenAICompatibleModule implements ILLMProviderModule {
   createClient(config: { apiKey?: string; baseURL?: string }): OpenAI {
@@ -14,7 +15,7 @@ export class OpenAICompatibleModule implements ILLMProviderModule {
     const openai = client as OpenAI;
     const createOptions: any = {
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: serializeOpenAIMessages(messages),
       temperature: 0.7,
       max_tokens: 2048,
     };
@@ -75,7 +76,7 @@ export class OpenAICompatibleModule implements ILLMProviderModule {
     const isReasoningModel = /deepseek|qwq|o[134]/i.test(model);
     const createOptions: any = {
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: serializeOpenAIMessages(messages),
       temperature: isReasoningModel ? undefined : 0.7,
       max_tokens: isReasoningModel ? 8192 : 4096,
       stream: true,
