@@ -28,7 +28,7 @@ function globToRegex(pattern: string): RegExp {
         i++;
         if (pattern[i + 1] === '/') i++; // consume '**/'
       } else {
-        re += '.*';
+        re += '[^/]*';
       }
     } else if (c === '?') {
       re += '[^/]';

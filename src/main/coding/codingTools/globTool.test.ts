@@ -23,14 +23,21 @@ describe('glob', () => {
     return JSON.parse(await tool.handler({ pattern }, { workspace: dir }));
   }
 
-  it('matches by extension with *', async () => {
+  it('matches only root level with * (no segment crossing)', async () => {
     const res = await run('*.ts');
+    expect(res.success).toBe(true);
+    const names = (res.matches as string[]).map((p) => path.basename(p)).sort();
+    expect(names).toEqual(['a.ts']);
+  });
+
+  it('matches recursively with **', async () => {
+    const res = await run('**/*.ts');
     expect(res.success).toBe(true);
     const names = (res.matches as string[]).map((p) => path.basename(p)).sort();
     expect(names).toEqual(['a.ts', 'c.ts']);
   });
 
-  it('matches recursively with **', async () => {
+  it('matches a root-level file with ** and a different extension', async () => {
     const res = await run('**/*.js');
     expect(res.success).toBe(true);
     expect((res.matches as string[]).map((p) => path.basename(p))).toEqual(['b.js']);
