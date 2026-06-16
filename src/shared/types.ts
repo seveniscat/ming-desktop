@@ -96,10 +96,21 @@ export interface PromptTemplateConfig {
   enabled?: boolean;
 }
 
+export interface CodingToolResult {
+  id: string;
+  name: string;
+  result: string;
+  isError?: boolean;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   timestamp?: string;
+  /** assistant 消息：模型本轮产出的工具调用 */
+  toolCalls?: ToolCall[];
+  /** user 消息：回填给模型的结构化工具结果 */
+  toolResults?: CodingToolResult[];
 }
 
 export interface Conversation {
