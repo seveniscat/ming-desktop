@@ -2,14 +2,9 @@ import { BrowserWindow } from 'electron';
 import { ToolDefinition, ToolCall } from '../../shared/types';
 import { Logger } from '../utils/Logger';
 import { ToolApprovalManager } from './toolApproval';
+import { ToolHandler, ToolEntry, ToolContext } from './tool-types';
 
-export type ToolHandler = (params: Record<string, any>) => Promise<string>;
-
-export interface ToolEntry {
-  definition: ToolDefinition;
-  handler: ToolHandler;
-  requiresApproval?: boolean;
-}
+export type { ToolHandler, ToolEntry, ToolContext };
 
 export class ToolExecutor {
   private tools: Map<string, ToolEntry> = new Map();
@@ -99,5 +94,15 @@ export class ToolExecutor {
 
     Logger.info(`Executing tool: ${name}`, params);
     return entry.handler(params);
+  }
+
+  /** 直接执行 handler（含 ToolContext），不做审批。coding agent 自行处理权限。 */
+  async runHandler(name: string, params: Record<string, any>, ctx?: ToolContext): Promise<string> {
+    const entry = this.tools.get(name);
+    if (!entry) {
+      throw new Error(`Unknown tool: ${name}`);
+    }
+    Logger.info(`Running tool: ${name}`, params);
+    return entry.handler(params, ctx);
   }
 }

@@ -35,7 +35,7 @@ export function createExecuteCommandTool(
   return {
     definition: DEFINITION,
     requiresApproval: true,
-    handler: async (params: Record<string, any>) => {
+    handler: async (params: Record<string, any>, _ctx?) => {
       try {
         const command = params.command;
         const cwd = params.cwd;

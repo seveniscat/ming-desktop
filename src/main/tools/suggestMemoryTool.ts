@@ -42,7 +42,7 @@ Do NOT use for:
 export function createSuggestMemoryTool(): ToolEntry {
   return {
     definition: DEFINITION,
-    handler: async (params: Record<string, any>) => {
+    handler: async (params: Record<string, any>, _ctx?) => {
       try {
         return JSON.stringify({
           suggested: true,

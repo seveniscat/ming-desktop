@@ -63,7 +63,7 @@ export function createDailyReportTool(
 ): ToolEntry {
   return {
     definition: DEFINITION,
-    handler: async (params: Record<string, any>) => {
+    handler: async (params: Record<string, any>, _ctx?) => {
       const storedPaths = configManager.get('workPaths', []) as string[];
       const home = process.env.HOME || '';
 
