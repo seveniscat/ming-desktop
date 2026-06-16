@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ChatMessage, ToolDefinition, ToolCall } from '../../../shared/types';
 import { ILLMProviderModule, ChatStreamResult, StreamWithToolsResult, StreamToolCall } from './types';
+import { serializeAnthropicMessages } from './serialize-anthropic';
 
 export class AnthropicModule implements ILLMProviderModule {
   createClient(config: { apiKey?: string; baseURL?: string }): Anthropic {
@@ -12,13 +13,12 @@ export class AnthropicModule implements ILLMProviderModule {
 
   async chat(client: unknown, messages: ChatMessage[], model: string, tools?: ToolDefinition[]): Promise<string | { toolCalls: ToolCall[] }> {
     const anthropic = client as Anthropic;
+    const _ser = serializeAnthropicMessages(messages);
     const createOptions: any = {
       model,
       max_tokens: 2048,
-      messages: messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      system: messages.find(m => m.role === 'system')?.content || '',
+      messages: _ser.conversation,
+      system: _ser.system,
     };
     if (tools && tools.length > 0) {
       createOptions.tools = tools.map(t => ({
@@ -44,13 +44,12 @@ export class AnthropicModule implements ILLMProviderModule {
 
   async chatStream(client: unknown, messages: ChatMessage[], model: string, onChunk: (text: string) => void, signal?: AbortSignal, onReasoningChunk?: (text: string) => void): Promise<ChatStreamResult> {
     const anthropic = client as Anthropic;
+    const _ser = serializeAnthropicMessages(messages);
     const stream = anthropic.messages.stream({
       model,
       max_tokens: 2048,
-      messages: messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      system: messages.find(m => m.role === 'system')?.content || '',
+      messages: _ser.conversation,
+      system: _ser.system,
     }, { signal });
 
     let fullContent = '';
@@ -76,13 +75,12 @@ export class AnthropicModule implements ILLMProviderModule {
 
   async chatStreamWithTools(client: unknown, messages: ChatMessage[], model: string, tools: ToolDefinition[] | undefined, onChunk: (text: string) => void, signal?: AbortSignal, onReasoningChunk?: (text: string) => void): Promise<StreamWithToolsResult> {
     const anthropic = client as Anthropic;
+    const _ser = serializeAnthropicMessages(messages);
     const createOptions: any = {
       model,
       max_tokens: 2048,
-      messages: messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      system: messages.find(m => m.role === 'system')?.content || '',
+      messages: _ser.conversation,
+      system: _ser.system,
     };
     if (tools && tools.length > 0) {
       createOptions.tools = tools.map(t => ({
