@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, LayoutDashboard, MessageSquare, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug, Cable, Activity, Brain } from 'lucide-react';
+import { Home, LayoutDashboard, MessageSquare, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug, Cable, Activity, Brain, Code2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeProvider';
 import { Button } from './ui/button';
@@ -15,6 +15,7 @@ const navItems = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'WorkGround' },
   { id: 'devtools', icon: Search, label: 'DevTools' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
+  { id: 'coding', icon: Code2, label: 'Coding' },
   { id: 'skills', icon: Zap, label: 'Skills' },
   { id: 'tools', icon: Wrench, label: 'Tools' },
   { id: 'mcp-servers', icon: Cable, label: 'MCP' },
