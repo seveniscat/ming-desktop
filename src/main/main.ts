@@ -31,6 +31,7 @@ import { migrateFromStore } from './database/migrate-from-store';
 import { GitCacheManager } from './services/GitCacheManager';
 import { scanBundles, type DetectedLibrary } from './techstack/bundleScanner';
 import { ChatService } from './chat/ChatService';
+import { CodingService } from './coding/CodingService';
 import { MCPManager } from './mcp/MCPManager';
 import { MemoryManager } from './services/MemoryManager';
 import { UpdateService } from './updater/UpdateService';
@@ -40,6 +41,7 @@ let mainWindow: BrowserWindow | null = null;
 let debugWindow: BrowserWindow | null = null;
 let agentManager: AgentManager;
 let chatService: ChatService;
+let codingService: CodingService;
 let skillManager: SkillManager;
 let llmManager: LLMProviderManager;
 let toolExecutor: ToolExecutor;
@@ -202,6 +204,8 @@ async function initializeServices(): Promise<void> {
 
   chatService = new ChatService(agentManager, skillManager, llmManager, toolExecutor, memoryManager, recordModelDebug);
 
+  codingService = new CodingService(llmManager, executorService);
+
   // 初始化 MCP 管理器
   mcpManager = new MCPManager();
   await mcpManager.initialize();
@@ -352,6 +356,24 @@ function setupIPCHandlers(): void {
 
   ipcMain.on(IPCChannels.CONVERSATION_CHAT_ABORT, (_, conversationId: string) => {
     chatService.abortChat(conversationId);
+  });
+
+  // Coding Agent 相关
+  ipcMain.handle(
+    IPCChannels.CODING_SESSION_CREATE,
+    async (_, workspace: string, model?: string, systemPrompt?: string, maxTurns?: number) => {
+      return codingService.create(workspace, model, systemPrompt, maxTurns);
+    },
+  );
+  ipcMain.handle(IPCChannels.CODING_SESSION_LIST, async () => codingService.list());
+  ipcMain.handle(IPCChannels.CODING_SESSION_DISPOSE, async (_, sessionId: string) => {
+    codingService.dispose(sessionId);
+  });
+  ipcMain.on(IPCChannels.CODING_SESSION_SEND, (event, sessionId: string, prompt: string) => {
+    codingService.handleSend(sessionId, prompt, event.sender);
+  });
+  ipcMain.on(IPCChannels.CODING_SESSION_STOP, (_, sessionId: string) => {
+    codingService.stop(sessionId);
   });
 
   // Debug 相关
