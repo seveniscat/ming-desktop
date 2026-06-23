@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, RefreshCw, ChevronDown, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RefreshCw, ChevronDown, CheckCircle, XCircle, Loader2, Download } from 'lucide-react';
 import type { LLMProvider, LLMProviderConfig, ModuleType } from '../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,7 +45,7 @@ function maskApiKey(key?: string): string {
 type TestState = { status: 'idle' } | { status: 'testing' } | { status: 'success'; message: string } | { status: 'error'; message: string };
 
 interface Props {
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 export default function LLMConfiguration({ onBack }: Props) {
@@ -68,6 +68,8 @@ export default function LLMConfiguration({ onBack }: Props) {
   const [editTestState, setEditTestState] = useState<TestState>({ status: 'idle' });
   const [expandedModelsId, setExpandedModelsId] = useState<string | null>(null);
   const [fetchingModelsId, setFetchingModelsId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -93,6 +95,22 @@ export default function LLMConfiguration({ onBack }: Props) {
   }, []);
 
   useEffect(() => { loadProviders(); }, [loadProviders]);
+
+  const handleImportCcSwitch = async () => {
+    setImporting(true);
+    setError(null);
+    setImportResult(null);
+    try {
+      const result = await window.electronAPI.llm.importFromCcSwitch();
+      await loadProviders();
+      setImportResult(`导入完成：新增 ${result.created} 个，跳过 ${result.skipped} 个（共扫描 ${result.total}）`);
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || '从 cc-switch 导入失败');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleSelectPreset = (preset: ProviderPreset) => {
     setSelectedPreset(preset);
@@ -283,9 +301,11 @@ export default function LLMConfiguration({ onBack }: Props) {
     <div className="h-full overflow-y-auto p-8">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Button type="button" variant="ghost" size="icon" onClick={onBack}>
-            <ArrowLeft size={20} />
-          </Button>
+          {onBack && (
+            <Button type="button" variant="ghost" size="icon" onClick={onBack}>
+              <ArrowLeft size={20} />
+            </Button>
+          )}
           <div>
             <h1 className="text-2xl font-bold text-foreground">LLM Providers</h1>
             <p className="text-sm text-muted-foreground">API keys, models, and default provider</p>
@@ -293,6 +313,12 @@ export default function LLMConfiguration({ onBack }: Props) {
         </div>
 
         {error && <p className="text-sm text-destructive mb-3" role="alert">{error}</p>}
+        {importResult && !error && (
+          <p className="text-sm text-emerald-500 mb-3 flex items-center gap-1.5">
+            <CheckCircle size={14} />
+            {importResult}
+          </p>
+        )}
 
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
           <Label className="shrink-0">Default for Agent chat</Label>
@@ -308,9 +334,20 @@ export default function LLMConfiguration({ onBack }: Props) {
         </div>
 
         {!showAdd ? (
-          <div className="mb-6">
-            <Button type="button" onClick={() => { setShowAdd(true); setSelectedPreset(null); setError(null); }} className="flex items-center gap-2">
+          <div className="mb-6 flex items-center gap-2">
+            <Button type="button" onClick={() => { setShowAdd(true); setSelectedPreset(null); setError(null); setImportResult(null); }} className="flex items-center gap-2">
               <Plus size={18} /> Add Provider
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleImportCcSwitch}
+              disabled={importing}
+              className="flex items-center gap-2"
+              title="从本地 cc-switch 配置批量导入 provider"
+            >
+              {importing ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              从 cc-switch 导入
             </Button>
           </div>
         ) : (

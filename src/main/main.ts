@@ -471,6 +471,10 @@ function setupIPCHandlers(): void {
     return llmManager.testConnection(providerId);
   });
 
+  ipcMain.handle(IPCChannels.LLM_IMPORT_CC_SWITCH, async () => {
+    return llmManager.importFromCcSwitch();
+  });
+
   // 执行服务相关
   ipcMain.handle(IPCChannels.EXECUTE_COMMAND, async (_, command: string, options?: any) => {
     return executorService.executeCommand(command, options);

@@ -35,6 +35,7 @@ export enum IPCChannels {
   LLM_UPDATE_PROVIDER = 'llm:update-provider',
   LLM_FETCH_MODELS = 'llm:fetch-models',
   LLM_TEST_CONNECTION = 'llm:test-connection',
+  LLM_IMPORT_CC_SWITCH = 'llm:import-cc-switch',
 
   // 执行服务相关
   EXECUTE_COMMAND = 'executor:execute-command',

@@ -1,12 +1,13 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ModuleType } from '../../shared/types';
+import { LLMProvider, LLMProviderConfig, ChatMessage, ToolDefinition, ModuleType, CcSwitchImportResult } from '../../shared/types';
 import { Logger } from '../utils/Logger';
 import { ConfigManager } from '../services/ConfigManager';
 import { getDatabase } from '../database/connection';
 import { getModule, getPreset } from './providers/registry';
 import { StreamWithToolsResult } from './providers/types';
 import { ClaudeAgentSDKModule } from './providers/claude-agent-sdk';
+import { findCcSwitchDb, readCcSwitchProviders } from './CcSwitchImporter';
 
 export class LLMProviderManager extends EventEmitter {
   private providers: Map<string, LLMProvider> = new Map();
@@ -399,5 +400,72 @@ export class LLMProviderManager extends EventEmitter {
     const mod = getModule(config.moduleType);
     const client = mod.createClient({ apiKey: config.apiKey, baseURL: config.baseURL });
     return mod.testConnection(client);
+  }
+
+  /**
+   * 从 cc-switch 导入 provider。
+   *
+   * - 单向：只读 cc-switch.db，不修改它
+   * - 按 name（忽略大小写）去重：已存在的跳过
+   * - claude / claude-desktop → anthropic moduleType；codex → openai-compatible
+   * - 若 Ming 当前没有默认 provider，把第一个导入成功的设为默认
+   * - 单条导入失败不影响其他条目
+   */
+  async importFromCcSwitch(): Promise<CcSwitchImportResult> {
+    const dbPath = findCcSwitchDb();
+    if (!dbPath) {
+      throw new Error('未找到 cc-switch 配置（~/.cc-switch/cc-switch.db），请确认已安装 cc-switch');
+    }
+
+    const candidates = readCcSwitchProviders(dbPath);
+    const existingNames = new Set(
+      this.listProviders().map((p) => p.name.toLowerCase()),
+    );
+    const seenSourceIds = new Set<string>();
+    let created = 0;
+    let skipped = 0;
+    let firstCreatedId: string | null = null;
+
+    for (const c of candidates) {
+      if (seenSourceIds.has(c.sourceId) || existingNames.has(c.name.toLowerCase())) {
+        skipped++;
+        continue;
+      }
+      seenSourceIds.add(c.sourceId);
+      try {
+        const provider = await this.addProvider({
+          name: c.name,
+          presetId: c.presetId,
+          moduleType: c.moduleType,
+          apiKey: c.apiKey,
+          baseURL: c.baseURL,
+          models: c.models,
+        });
+        if (!firstCreatedId) firstCreatedId = provider.id;
+        created++;
+      } catch (e) {
+        // 单条失败不中断整批
+        skipped++;
+        Logger.warn(`cc-switch 导入失败: ${c.name}`, e);
+      }
+    }
+
+    // 若当前没有默认 provider，把第一个新建的设为默认
+    if (firstCreatedId && !this.configManager.get('defaultLLMProvider')) {
+      this.configManager.set('defaultLLMProvider', firstCreatedId);
+      Logger.info(`cc-switch: 设置默认 provider = ${firstCreatedId}`);
+    }
+
+    Logger.info(
+      `cc-switch 导入完成: 总计 ${candidates.length}，新建 ${created}，跳过 ${skipped}（来源: ${dbPath}）`,
+    );
+
+    return {
+      total: candidates.length,
+      created,
+      skipped,
+      providers: this.listProviders(),
+      source: dbPath,
+    };
   }
 }

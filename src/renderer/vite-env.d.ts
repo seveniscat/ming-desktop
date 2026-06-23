@@ -65,6 +65,7 @@ interface Window {
       updateProvider: (providerId: string, updates: any) => Promise<any>;
       fetchModels: (providerId: string) => Promise<any>;
       testConnection: (providerId: string) => Promise<{ success: boolean; message: string }>;
+      importFromCcSwitch: () => Promise<{ total: number; created: number; skipped: number; providers: any[]; source: string }>;
     };
     executor: {
       executeCommand: (command: string, options?: any) => Promise<any>;

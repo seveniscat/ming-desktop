@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, LayoutDashboard, MessageSquare, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug, Cable, Activity, Brain, Code2 } from 'lucide-react';
+import { Home, LayoutDashboard, MessageSquare, Zap, Wrench, FileText, Search, Settings, Sun, Moon, Monitor, PanelLeftClose, PanelLeft, Bug, Cable, Activity, Brain, Code2, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeProvider';
 import { Button } from './ui/button';
@@ -22,6 +22,7 @@ const navItems = [
   { id: 'mcp-debug', icon: Activity, label: 'MCP Debug' },
   { id: 'prompts', icon: FileText, label: 'Prompts' },
   { id: 'memories', icon: Brain, label: 'Memories' },
+  { id: 'llm', icon: KeyRound, label: 'Providers' },
 ];
 
 export default function NavRail({ activeTab, onTabChange }: NavRailProps) {

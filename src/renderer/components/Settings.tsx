@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, RotateCcw, Key, Palette, Globe, ChevronRight, Download, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
-import LLMConfiguration from './LLMConfiguration';
+import { Save, RotateCcw, Palette, Globe, Download, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { themePresets } from '@/lib/themes';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
@@ -20,14 +19,11 @@ type UpdateStatus =
   | { status: 'downloaded'; version: string }
   | { status: 'error'; message: string };
 
-type SubPage = 'llm' | null;
-
 export default function Settings() {
   const { theme, setTheme: setCtxTheme, colorTheme, setColorTheme } = useTheme();
   const [language, setLanguage] = useState('zh-CN');
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [subPage, setSubPage] = useState<SubPage>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ status: 'idle' });
 
   useEffect(() => {
@@ -98,10 +94,6 @@ export default function Settings() {
       }
     }
   };
-
-  if (subPage === 'llm') {
-    return <LLMConfiguration onBack={() => setSubPage(null)} />;
-  }
 
   return (
     <div className="h-full overflow-y-auto p-8">
@@ -275,29 +267,6 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
-
-        <button
-          type="button"
-          onClick={() => setSubPage('llm')}
-          className="w-full text-left mb-4"
-        >
-          <Card className="rounded-xl bg-[var(--surface)] border-[hsl(var(--border))] hover:border-primary/50 transition-colors">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-warning/10">
-                    <Key size={18} className="text-warning" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">LLM Configuration</CardTitle>
-                    <CardDescription>API keys, models, and default provider for Agent chat</CardDescription>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="text-muted-foreground" />
-              </div>
-            </CardHeader>
-          </Card>
-        </button>
 
         <div className="flex gap-3 justify-end pb-8">
           <Button

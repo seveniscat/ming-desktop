@@ -155,6 +155,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke(IPCChannels.LLM_FETCH_MODELS, providerId),
     testConnection: (providerId: string) =>
       ipcRenderer.invoke(IPCChannels.LLM_TEST_CONNECTION, providerId),
+    importFromCcSwitch: () =>
+      ipcRenderer.invoke(IPCChannels.LLM_IMPORT_CC_SWITCH),
   },
 
   // 执行 API
@@ -350,6 +352,7 @@ export interface ElectronAPI {
     updateProvider: (providerId: string, updates: any) => Promise<void>;
     fetchModels: (providerId: string) => Promise<string[]>;
     testConnection: (providerId: string) => Promise<{ success: boolean; message: string }>;
+    importFromCcSwitch: () => Promise<{ total: number; created: number; skipped: number; providers: any[]; source: string }>;
   };
   executor: {
     executeCommand: (command: string, options?: any) => Promise<{ stdout: string; stderr: string; exitCode: number }>;

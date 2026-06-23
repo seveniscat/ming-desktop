@@ -8,6 +8,7 @@ import CodingWorkspace from './components/CodingWorkspace';
 import SkillManager from './components/SkillManager';
 import PromptsPage from './pages/PromptsPage';
 import Settings from './components/Settings';
+import LLMConfiguration from './components/LLMConfiguration';
 import DeveloperToolsPage from './components/DeveloperToolsPage';
 import ToolsPage from './pages/ToolsPage';
 import McpServersPage from './pages/McpServersPage';
@@ -123,6 +124,7 @@ function App() {
               {activeTab === 'mcp-debug' && <McpDebugPage />}
               {activeTab === 'prompts' && <PromptsPage />}
               {activeTab === 'memories' && <MemoryPage />}
+              {activeTab === 'llm' && <LLMConfiguration />}
               {activeTab === 'settings' && <Settings />}
             </div>
           </div>

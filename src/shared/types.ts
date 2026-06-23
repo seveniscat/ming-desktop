@@ -185,6 +185,14 @@ export interface LLMProviderConfig {
   sdkConfig?: ClaudeAgentSDKConfig;
 }
 
+export interface CcSwitchImportResult {
+  total: number;
+  created: number;
+  skipped: number;
+  providers: LLMProvider[];
+  source: string;
+}
+
 // 配置相关类型
 export interface AppConfig {
   theme: 'light' | 'dark' | 'auto';
