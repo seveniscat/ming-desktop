@@ -1,5 +1,6 @@
 import type { ThreadMessageLike } from '@assistant-ui/react';
 import type { Message, ToolCallRecord } from '../types';
+import { upsertToolCallRecord } from '../../../../shared/toolStream';
 
 let nextId = 1;
 
@@ -63,7 +64,16 @@ export function toThreadMessageLike(msg: Message): ThreadMessageLike {
       content: parts,
       id: `msg-${nextId++}`,
       createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-      status: msg.content === '' && !msg.toolCalls?.length ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const },
+      status: (() => {
+        const toolsRunning = msg.toolCalls?.some(
+          (tc) => tc.status === 'running' || tc.status === 'requires-action',
+        );
+        const waitingForFirstPart =
+          msg.content === '' && !msg.toolCalls?.length && !msg.reasoningContent;
+        return toolsRunning || waitingForFirstPart
+          ? { type: 'running' as const }
+          : { type: 'complete' as const, reason: 'stop' as const };
+      })(),
     };
   }
 
@@ -146,15 +156,26 @@ export function upsertToolCall(
   const updated = [...messages];
   const last = updated[updated.length - 1];
   if (last && last.role === 'assistant') {
-    const existing = last.toolCalls ?? [];
-    const idx = existing.findIndex((tc) => tc.id === record.id);
-    const toolCalls = [...existing];
-    if (idx >= 0) {
-      toolCalls[idx] = record;
-    } else {
-      toolCalls.push(record);
-    }
-    updated[updated.length - 1] = { ...last, toolCalls };
+    updated[updated.length - 1] = {
+      ...last,
+      toolCalls: upsertToolCallRecord(last.toolCalls ?? [], record),
+    };
+  }
+  return updated;
+}
+
+/** Append streamed reasoning text to the last assistant message. */
+export function appendReasoningChunk(
+  messages: Message[],
+  text: string,
+): Message[] {
+  const updated = [...messages];
+  const last = updated[updated.length - 1];
+  if (last && last.role === 'assistant') {
+    updated[updated.length - 1] = {
+      ...last,
+      reasoningContent: (last.reasoningContent || '') + text,
+    };
   }
   return updated;
 }

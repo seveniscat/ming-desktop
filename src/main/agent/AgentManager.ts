@@ -318,16 +318,17 @@ export class AgentManager extends EventEmitter {
     }));
   }
 
-  getConversationMessages(conversationId: string): (ChatMessage & { reasoning_content?: string })[] {
+  getConversationMessages(conversationId: string): (ChatMessage & { reasoning_content?: string; tool_calls?: string })[] {
     const db = getDatabase();
     const rows = db.prepare(`
-      SELECT role, content, reasoning_content, timestamp FROM chat_messages
+      SELECT role, content, reasoning_content, tool_calls, timestamp FROM chat_messages
       WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 100
     `).all(conversationId) as any[];
     return rows.map(r => ({
       role: r.role,
       content: r.content,
       reasoning_content: r.reasoning_content || undefined,
+      tool_calls: r.tool_calls || undefined,
       timestamp: r.timestamp
     }));
   }

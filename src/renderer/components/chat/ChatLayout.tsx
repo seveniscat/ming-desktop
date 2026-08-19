@@ -14,7 +14,6 @@ import ExecutionDetails from './ExecutionDetails';
 import { useIpcChatRuntime } from './assistant-ui/useIpcChatRuntime';
 import { ToolApprovalProvider } from './assistant-ui/tool-approval-context';
 import { AssistantTheme } from './assistant-ui/AssistantTheme';
-import { appendStreamText, appendStreamError, createEmptyAssistantMessage } from './assistant-ui/messageAdapter';
 import type { LLMProvider, Conversation, Message } from './types';
 import type { PromptTemplate } from '../../../shared/types';
 
@@ -48,7 +47,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
   } = useChatConversations();
 
   // --- Execution state (debug panel) ---
-  const { executionState, toggleCollapsed, resetExecution } = useExecutionState(activeConversationRef);
+  const { executionState, setExecutionState, toggleCollapsed, resetExecution } = useExecutionState(activeConversationRef);
 
   // --- Chat state managed locally (fed to both IPC runtime and legacy paths) ---
   const [messages, setMessages] = useState<Message[]>([]);
@@ -100,71 +99,54 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     return activeSkills.get(convId) || [];
   }, [activeSkills]);
 
-  // --- Programmatic send (for launch requests & skill auto-messages) ---
+  const handleActiveConversation = useCallback((id: string | null) => {
+    activeConversationRef.current = id;
+    if (id) {
+      resetExecution();
+    } else {
+      setExecutionState((prev) => ({ ...prev, finished: true }));
+    }
+  }, [activeConversationRef, resetExecution, setExecutionState]);
+
+  const activeSkillIds = currentConversationId ? getActiveSkills(currentConversationId) : [];
+
+  const { runtime, sendMessage, respondApproval, pendingApprovals } = useIpcChatRuntime({
+    conversationId: currentConversationId,
+    setConversationId: setCurrentConversationId,
+    messages,
+    setMessages,
+    isRunning: isLoading,
+    setIsRunning: setIsLoading,
+    selectedModel,
+    activeSkillIds,
+    onMemorySuggestion: handleMemorySuggestion,
+    onActiveConversation: handleActiveConversation,
+  });
+
+  // --- Programmatic send (daily/weekly report, launch requests, skill auto-messages) ---
   const sendProgrammaticMessage = useCallback(async ({
     message,
     model,
     extraSkillIds,
+    conversationId,
   }: {
     message: string;
     model?: string;
     extraSkillIds?: string[];
+    conversationId?: string;
   }) => {
-    if (isLoading) return;
-
-    let convId: string | null = currentConversationId;
-    if (!convId) {
-      try {
-        const conv = await window.electronAPI.conversations.create();
-        convId = conv.id;
-        setConversations(prev => [conv, ...prev]);
-        setCurrentConversationId(convId);
-      } catch (error) {
-        console.error('Failed to create conversation:', error);
-        return;
-      }
-    }
-
-    activeConversationRef.current = convId;
-
-    const userMsg: Message = { role: 'user', content: message, timestamp: new Date().toISOString() };
-    const assistantMsg = createEmptyAssistantMessage();
-    setMessages(prev => [...prev, userMsg, assistantMsg]);
-    setIsLoading(true);
-
-    const removeChunk = window.electronAPI.conversations.onStreamChunk((data) => {
-      if (data.conversationId !== convId) return;
-      setMessages(prev => appendStreamText(prev, data.content));
+    await sendMessage(message, {
+      extraSkillIds,
+      model,
+      conversationId,
+      onConversationReady: () => {
+        loadConversations();
+      },
+      onSettled: () => {
+        loadConversations();
+      },
     });
-
-    const removeEnd = window.electronAPI.conversations.onStreamEnd((data) => {
-      removeChunk(); removeEnd(); removeError(); removeToolEvent();
-      if (data.conversationId !== convId) return;
-      setIsLoading(false);
-      activeConversationRef.current = null;
-      loadConversations();
-    });
-
-    const removeError = window.electronAPI.conversations.onStreamError((data) => {
-      removeChunk(); removeEnd(); removeError(); removeToolEvent();
-      if (data.conversationId !== convId) return;
-      setMessages(prev => appendStreamError(prev, data.error));
-      setIsLoading(false);
-      activeConversationRef.current = null;
-    });
-
-    const removeToolEvent = window.electronAPI.conversations.onStreamToolEvent(() => {});
-
-    const stateSkillIds = activeSkills.get(convId!) || [];
-    const merged = extraSkillIds?.length
-      ? [...new Set([...stateSkillIds, ...extraSkillIds])]
-      : stateSkillIds;
-
-    window.electronAPI.conversations.chat(
-      convId!, null, message, model || selectedModel || undefined,
-      merged.length > 0 ? merged : undefined,
-    );
-  }, [isLoading, currentConversationId, selectedModel, activeSkills, setConversations, setCurrentConversationId, activeConversationRef, loadConversations]);
+  }, [sendMessage, activeConversationRef, loadConversations]);
 
   const handleActivateSkill = useCallback(async (skillId: string, autoMessage?: string) => {
     // Handle prompt injections (prefixed with __prompt__)
@@ -187,6 +169,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
         message: autoMessage,
         model: selectedModel || undefined,
         extraSkillIds: [skillId],
+        conversationId: convId!,
       });
     }
   }, [currentConversationId, activateSkill, setConversations, setCurrentConversationId, sendProgrammaticMessage, selectedModel]);
@@ -249,21 +232,6 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
       deactivateSkill(currentConversationId, skillId);
     }
   }, [currentConversationId, deactivateSkill]);
-
-  // --- Assistant-ui runtime ---
-  const activeSkillIds = currentConversationId ? getActiveSkills(currentConversationId) : [];
-
-  const { runtime, respondApproval, pendingApprovals } = useIpcChatRuntime({
-    conversationId: currentConversationId,
-    setConversationId: setCurrentConversationId,
-    messages,
-    setMessages,
-    isRunning: isLoading,
-    setIsRunning: setIsLoading,
-    selectedModel,
-    activeSkillIds,
-    onMemorySuggestion: handleMemorySuggestion,
-  });
 
   // --- Load initial data ---
   useEffect(() => {

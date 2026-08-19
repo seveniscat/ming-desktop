@@ -611,4 +611,16 @@ export function runMigrations(): void {
       db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(migration22Name);
     }
   }
+
+  // Migration: persist tool call records on chat messages
+  const migration23Name = 'add-chat-message-tool-calls';
+  const applied23 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration23Name);
+  if (!applied23) {
+    try {
+      db.exec('ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT DEFAULT NULL');
+    } catch {
+      // Column may already exist on fresh installs
+    }
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration23Name);
+  }
 }

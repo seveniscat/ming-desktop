@@ -9,6 +9,10 @@ import { AgentManager } from '../agent/AgentManager';
 import { getDatabase } from '../database/connection';
 import { MemoryManager } from '../services/MemoryManager';
 import { Logger } from '../utils/Logger';
+import {
+  applyToolStreamEventToRecords,
+  type ToolCallRecord,
+} from '../../shared/toolStream';
 
 export class ChatService {
   private activeStreams: Map<string, AbortController> = new Map();
@@ -75,6 +79,8 @@ export class ChatService {
       }
     };
 
+    let persistedToolCalls: ToolCallRecord[] = [];
+
     const callbacks: ChatCallbacks = {
       onChunk: (text: string) => {
         send(IPCChannels.CONVERSATION_STREAM_CHUNK, { conversationId, content: text });
@@ -83,14 +89,18 @@ export class ChatService {
         send(IPCChannels.CONVERSATION_STREAM_REASONING_CHUNK, { conversationId, content: text });
       },
       onToolEvent: (event: ToolStreamEvent) => {
+        persistedToolCalls = applyToolStreamEventToRecords(persistedToolCalls, event);
         send(IPCChannels.CONVERSATION_STREAM_TOOL_EVENT, { conversationId, ...event });
       },
       onDebug: (event) => {
         this.recordDebugEvent?.({ ...event, conversationId }, webContents);
       },
       onEnd: (result) => {
-        db.prepare(`INSERT INTO chat_messages (agent_id, role, content, reasoning_content, conversation_id) VALUES (?, 'assistant', ?, ?, ?)`)
-          .run(agentId || null, result.fullContent, result.reasoningContent || null, conversationId);
+        const toolCallsJson = persistedToolCalls.length > 0
+          ? JSON.stringify(persistedToolCalls)
+          : null;
+        db.prepare(`INSERT INTO chat_messages (agent_id, role, content, reasoning_content, tool_calls, conversation_id) VALUES (?, 'assistant', ?, ?, ?, ?)`)
+          .run(agentId || null, result.fullContent, result.reasoningContent || null, toolCallsJson, conversationId);
         db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversationId);
         send(IPCChannels.CONVERSATION_STREAM_END, {
           conversationId, fullContent: result.fullContent, reasoningContent: result.reasoningContent, usage: result.usage,

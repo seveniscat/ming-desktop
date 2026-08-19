@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { parsePersistedToolCalls } from '../../../../shared/toolStream';
 import type { Conversation, Message } from '../types';
 
 export function useChatConversations() {
@@ -13,6 +14,7 @@ export function useChatConversations() {
         role: m.role,
         content: m.content,
         reasoningContent: m.reasoning_content || undefined,
+        toolCalls: parsePersistedToolCalls(m.tool_calls ?? m.toolCalls),
         timestamp: m.timestamp,
       }));
 

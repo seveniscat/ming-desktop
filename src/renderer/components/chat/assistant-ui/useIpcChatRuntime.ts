@@ -4,13 +4,23 @@ import {
   type ExternalStoreAdapter,
 } from '@assistant-ui/react';
 import type { Message, ToolCallRecord } from '../types';
+import { applyToolStreamEventToMessages } from '../../../../shared/toolStream';
 import {
   toThreadMessageLike,
   createEmptyAssistantMessage,
   appendStreamText,
   appendStreamError,
+  appendReasoningChunk,
   upsertToolCall,
 } from './messageAdapter';
+
+export interface SendChatMessageOptions {
+  extraSkillIds?: string[];
+  model?: string;
+  conversationId?: string;
+  onConversationReady?: (conversationId: string) => void;
+  onSettled?: () => void;
+}
 
 export interface MemorySuggestionEvent {
   content: string;
@@ -37,6 +47,8 @@ interface UseIpcChatRuntimeOptions {
   activeSkillIds: string[];
   /** Called when the agent suggests a memory via suggest_memory tool */
   onMemorySuggestion?: (suggestion: MemorySuggestionEvent) => void;
+  /** Fires with the active conversation id when a send starts, and null when it settles */
+  onActiveConversation?: (conversationId: string | null) => void;
 }
 
 /**
@@ -59,6 +71,7 @@ export function useIpcChatRuntime({
   selectedModel,
   activeSkillIds,
   onMemorySuggestion,
+  onActiveConversation,
 }: UseIpcChatRuntimeOptions) {
   // Track the active streaming conversation so IPC callbacks can filter
   const activeConvRef = useRef<string | null>(null);
@@ -98,26 +111,18 @@ export function useIpcChatRuntime({
     return unsubscribe;
   }, []);
 
-  // --- onNew: called when the user sends a message via assistant-ui ---
-  const onNew = useCallback(
-    async (message: Parameters<ExternalStoreAdapter<Message>['onNew']>[0]) => {
-      // Extract text from the AppendMessage
-      let text = '';
-      if (typeof message.content === 'string') {
-        text = message.content;
-      } else if (Array.isArray(message.content)) {
-        for (const part of message.content) {
-          if (part.type === 'text') {
-            text += (part as { type: 'text'; text: string }).text;
-          }
-        }
-      }
-
+  const sendMessage = useCallback(
+    async (text: string, options?: SendChatMessageOptions) => {
       if (!text.trim()) return;
+      if (isRunning) return;
 
-      // Auto-create conversation if needed
       let convId: string;
-      if (conversationId) {
+      if (options?.conversationId) {
+        convId = options.conversationId;
+        if (convId !== conversationId) {
+          setConversationId(convId);
+        }
+      } else if (conversationId) {
         convId = conversationId;
       } else {
         try {
@@ -131,8 +136,9 @@ export function useIpcChatRuntime({
       }
 
       activeConvRef.current = convId;
+      onActiveConversation?.(convId);
+      options?.onConversationReady?.(convId);
 
-      // Add user + empty assistant messages
       const userMsg: Message = {
         role: 'user',
         content: text,
@@ -143,7 +149,13 @@ export function useIpcChatRuntime({
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setIsRunning(true);
 
-      // Register IPC listeners for this stream
+      const settle = () => {
+        setIsRunning(false);
+        activeConvRef.current = null;
+        onActiveConversation?.(null);
+        options?.onSettled?.();
+      };
+
       const removeChunk = window.electronAPI.conversations.onStreamChunk(
         (data) => {
           if (data.conversationId !== convId) return;
@@ -154,17 +166,7 @@ export function useIpcChatRuntime({
       const removeReasoningChunk = window.electronAPI.conversations.onStreamReasoningChunk(
         (data) => {
           if (data.conversationId !== convId) return;
-          setMessages((prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last && last.role === 'assistant') {
-              updated[updated.length - 1] = {
-                ...last,
-                reasoningContent: (last.reasoningContent || '') + data.content,
-              };
-            }
-            return updated;
-          });
+          setMessages((prev) => appendReasoningChunk(prev, data.content));
         },
       );
 
@@ -176,8 +178,6 @@ export function useIpcChatRuntime({
           removeError();
           removeToolEvent();
           if (data.conversationId !== convId) return;
-          // Reasoning is now streamed in real-time via onStreamReasoningChunk,
-          // but fall back to attaching from streamEnd for providers that don't stream reasoning
           if (data.reasoningContent) {
             setMessages((prev) => {
               const updated = [...prev];
@@ -188,8 +188,7 @@ export function useIpcChatRuntime({
               return updated;
             });
           }
-          setIsRunning(false);
-          activeConvRef.current = null;
+          settle();
         },
       );
 
@@ -202,8 +201,7 @@ export function useIpcChatRuntime({
           removeToolEvent();
           if (data.conversationId !== convId) return;
           setMessages((prev) => appendStreamError(prev, data.error));
-          setIsRunning(false);
-          activeConvRef.current = null;
+          settle();
         },
       );
 
@@ -211,7 +209,6 @@ export function useIpcChatRuntime({
         window.electronAPI.conversations.onStreamToolEvent((data) => {
           if (data.conversationId !== convId) return;
 
-          // Handle suggest_memory as a special case (triggers memory suggestion UI)
           if (data.event === 'tool_result' && data.toolName === 'suggest_memory') {
             try {
               const parsed = JSON.parse(data.result);
@@ -225,70 +222,43 @@ export function useIpcChatRuntime({
             } catch {}
           }
 
-          // Process all tool events for display in chat bubbles
-          if (data.event === 'tool_start' && data.toolName) {
-            const record: ToolCallRecord = {
-              id: `${data.toolName}-${data.timestamp}`,
-              toolName: data.toolName,
-              args: data.args,
-              status: 'running',
-              startedAt: data.timestamp,
-            };
-            setMessages((prev) => upsertToolCall(prev, record));
-          } else if (data.event === 'tool_result' && data.toolName) {
-            setMessages((prev) => {
-              const msgs = [...prev];
-              const last = msgs[msgs.length - 1];
-              if (last?.role === 'assistant' && last.toolCalls?.length) {
-                const idx = last.toolCalls.findIndex(
-                  (tc) => tc.toolName === data.toolName && tc.status === 'running',
-                );
-                if (idx >= 0) {
-                  const updated = { ...last, toolCalls: [...last.toolCalls] };
-                  updated.toolCalls[idx] = {
-                    ...updated.toolCalls[idx],
-                    status: 'complete' as const,
-                    result: data.result,
-                    duration: data.duration,
-                  };
-                  msgs[msgs.length - 1] = updated;
-                }
-              }
-              return msgs;
-            });
-          } else if (data.event === 'tool_error' && data.toolName) {
-            setMessages((prev) => {
-              const msgs = [...prev];
-              const last = msgs[msgs.length - 1];
-              if (last?.role === 'assistant' && last.toolCalls?.length) {
-                const idx = last.toolCalls.findIndex(
-                  (tc) => tc.toolName === data.toolName && tc.status === 'running',
-                );
-                if (idx >= 0) {
-                  const updated = { ...last, toolCalls: [...last.toolCalls] };
-                  updated.toolCalls[idx] = {
-                    ...updated.toolCalls[idx],
-                    status: 'incomplete' as const,
-                    error: data.error,
-                  };
-                  msgs[msgs.length - 1] = updated;
-                }
-              }
-              return msgs;
-            });
-          }
+          setMessages((prev) => applyToolStreamEventToMessages(prev, data));
         });
 
-      // Send the message via IPC
+      const skillIds = [...new Set([
+        ...activeSkillIds,
+        ...(options?.extraSkillIds || []),
+      ])];
+      const model = options?.model || selectedModel || undefined;
+
       window.electronAPI.conversations.chat(
         convId,
         null,
         text,
-        selectedModel || undefined,
-        activeSkillIds.length > 0 ? activeSkillIds : undefined,
+        model,
+        skillIds.length > 0 ? skillIds : undefined,
       );
     },
-    [conversationId, setConversationId, setMessages, setIsRunning, selectedModel, activeSkillIds, onMemorySuggestion],
+    [conversationId, isRunning, setConversationId, setMessages, setIsRunning, selectedModel, activeSkillIds, onMemorySuggestion, onActiveConversation],
+  );
+
+  // --- onNew: called when the user sends a message via assistant-ui ---
+  const onNew = useCallback(
+    async (message: Parameters<ExternalStoreAdapter<Message>['onNew']>[0]) => {
+      let text = '';
+      if (typeof message.content === 'string') {
+        text = message.content;
+      } else if (Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (part.type === 'text') {
+            text += (part as { type: 'text'; text: string }).text;
+          }
+        }
+      }
+
+      await sendMessage(text);
+    },
+    [sendMessage],
   );
 
   // --- onCancel: abort the current stream ---
@@ -298,7 +268,8 @@ export function useIpcChatRuntime({
     window.electronAPI.conversations.abort(convId);
     setIsRunning(false);
     activeConvRef.current = null;
-  }, [conversationId, setIsRunning]);
+    onActiveConversation?.(null);
+  }, [conversationId, setIsRunning, onActiveConversation]);
 
   // Build the ExternalStoreAdapter
   const adapter: ExternalStoreAdapter<Message> = {
@@ -350,6 +321,7 @@ export function useIpcChatRuntime({
 
   return {
     runtime,
+    sendMessage,
     respondApproval,
     pendingApprovals: pendingApprovals.current,
   };

@@ -84,7 +84,7 @@ export function useExecutionState(activeConversationRef: MutableRefObject<string
   });
 
   useEffect(() => {
-    const remove = window.electronAPI.debug?.onModelCall((data) => {
+    const removeDebug = window.electronAPI.debug?.onModelCall((data) => {
       if (data.conversationId && data.conversationId !== activeConversationRef.current) {
         return;
       }
@@ -98,7 +98,77 @@ export function useExecutionState(activeConversationRef: MutableRefObject<string
         };
       });
     });
-    return () => remove?.();
+
+    const removeToolEvent = window.electronAPI.conversations?.onStreamToolEvent((data) => {
+      if (!activeConversationRef.current || data.conversationId !== activeConversationRef.current) {
+        return;
+      }
+
+      if (data.event === 'tool_start' && data.toolName) {
+        setExecutionState(prev => ({
+          ...prev,
+          finished: false,
+          steps: [
+            ...prev.steps.slice(-39),
+            {
+              id: `tool-start-${data.toolName}-${data.timestamp}`,
+              type: 'tool',
+              timestamp: data.timestamp,
+              title: `调用工具：${data.toolName}`,
+              detail: compactDetail(data.args),
+              status: 'active',
+            },
+          ],
+        }));
+        return;
+      }
+
+      if (data.event === 'tool_result' && data.toolName) {
+        setExecutionState(prev => {
+          const steps = [...prev.steps];
+          const startStep = steps.findIndex(
+            s => s.type === 'tool' && s.status === 'active' && s.title === `调用工具：${data.toolName}`,
+          );
+          if (startStep >= 0) {
+            steps[startStep] = {
+              ...steps[startStep],
+              status: 'done',
+              title: `工具完成：${data.toolName}`,
+              detail: [
+                steps[startStep].detail,
+                data.duration != null ? `耗时：${data.duration}ms` : '',
+                data.result ? `结果：${compactDetail(data.result, 300)}` : '',
+              ].filter(Boolean).join('\n'),
+            };
+          }
+          return { ...prev, steps };
+        });
+        return;
+      }
+
+      if (data.event === 'tool_error' && data.toolName) {
+        setExecutionState(prev => {
+          const steps = [...prev.steps];
+          const startStep = steps.findIndex(
+            s => s.type === 'tool' && s.status === 'active' && s.title === `调用工具：${data.toolName}`,
+          );
+          if (startStep >= 0) {
+            steps[startStep] = {
+              ...steps[startStep],
+              status: 'error',
+              title: `工具失败：${data.toolName}`,
+              detail: data.error || 'Tool execution failed',
+            };
+          }
+          return { ...prev, steps };
+        });
+      }
+    });
+
+    return () => {
+      removeDebug?.();
+      removeToolEvent?.();
+    };
   }, [activeConversationRef]);
 
   const toggleCollapsed = useCallback(() => {

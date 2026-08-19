@@ -1,4 +1,5 @@
 import type { PromptTemplate } from '../../../shared/types';
+import type { ToolCallRecord } from '../../../shared/toolStream';
 
 export interface Agent {
   id: string;
@@ -15,18 +16,7 @@ export interface Conversation {
   updatedAt: string;
 }
 
-export interface ToolCallRecord {
-  id: string;
-  toolName: string;
-  args?: Record<string, any>;
-  argsText?: string;
-  result?: string;
-  error?: string;
-  status: 'running' | 'complete' | 'incomplete' | 'requires-action';
-  approvalPayload?: { requestId: string; toolName: string; params: Record<string, any> };
-  startedAt?: number;
-  duration?: number;
-}
+export type { ToolCallRecord };
 
 export interface Message {
   role: 'user' | 'assistant';
