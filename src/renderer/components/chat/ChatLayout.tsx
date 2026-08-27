@@ -7,6 +7,7 @@ import MemorySuggestCard from './MemorySuggestCard';
 import { useChatConversations } from './hooks/useChatConversations';
 import { useExecutionState } from './hooks/useExecutionState';
 import { useSlashCommands } from './hooks/useSlashCommands';
+import { useMentions } from './hooks/useMentions';
 import ConversationList from './ConversationList';
 import ChatHeader from './ChatHeader';
 import { AssistantThread } from './assistant-ui/AssistantThread';
@@ -110,6 +111,9 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
 
   const activeSkillIds = currentConversationId ? getActiveSkills(currentConversationId) : [];
 
+  // --- @ 引用（mention）---
+  const mentions = useMentions();
+
   const { runtime, sendMessage, respondApproval, pendingApprovals } = useIpcChatRuntime({
     conversationId: currentConversationId,
     setConversationId: setCurrentConversationId,
@@ -121,6 +125,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
     activeSkillIds,
     onMemorySuggestion: handleMemorySuggestion,
     onActiveConversation: handleActiveConversation,
+    getActiveReferences: mentions.consumeReferences,
   });
 
   // --- Programmatic send (daily/weekly report, launch requests, skill auto-messages) ---
@@ -412,6 +417,7 @@ export default function ChatLayout({ launchRequest, onLaunchHandled }: ChatLayou
               <AssistantThread
                 commands={commands}
                 quickActions={quickActions}
+                mentions={mentions}
                 pendingParameterSkill={pendingParameterSkill}
                 pendingVariablePrompt={pendingVariablePrompt}
                 onApplySkillParameters={applySkillParameters}

@@ -132,9 +132,9 @@ repo-a (12 commits) ...
 2. **MentionResolver**（已完成）：14 个单测覆盖四类来源、截断、失败不阻塞、git 上限与参数容错
 3. **ChatEngine 注入**（已完成）：buildContext 异步化，`<referenced-context>` 块注入 + 24k 预算截断单测；@技能 引用与 injectedSkills 合并去重；额外实现**多轮在场**——从最近历史用户消息回收引用（去重，取最近 8 条）
 4. **IPC 链路**（已完成）：main.ts/preload/ChatService 透传 + `ElectronAPI` 接口同步 + mention_references 持久化往返 + 消息列表返回 references；@Git 适配器复用日报管线（GitCacheManager 缓存 + 身份解析）
-5. **useMentions + Picker**：触发/过滤/选择/移除状态机；文件路径输入；Git 时间段选择
-6. **ChipsBar + 气泡标签**：发送链路接线 + messageAdapter 来源徽章
-7. **打磨**：FTS 搜索记忆、最近文件引用记忆、空态文案
+5. **useMentions + Picker**（已完成）：`mentionTrigger.ts` 纯函数触发检测（8 个单测，邮箱/空格/多 @ 边界）；`useMentions` 状态机（懒加载数据源、chips 去重、发送时一次性消费）；`MentionPicker` 分组选择器（↑↓/Enter/Esc 键盘导航、文件路径输入、Git 时间段预设）；选中后经原生 setter + input 事件把 @token 替换为 @label
+6. **ChipsBar + 气泡标签**（已完成）：`MentionChipsBar` 引用条（输入框上方，可移除）；来源徽章经 `ThreadMessageLike.metadata.custom.references` 透传，`UserMessage` 渲染按 kind 图标的徽章行
+7. **打磨**（部分完成）：空态文案、邮箱误触发防护已做；FTS 记忆搜索、最近文件引用记忆、行内 chip 富文本为后续迭代
 
 ## 8. 验收标准
 

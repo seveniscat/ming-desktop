@@ -5,6 +5,10 @@ import {
 } from "@/components/assistant-ui/attachment";
 import ComposerParameterCard from "@/components/chat/ComposerParameterCard";
 import ComposerVariableCard from "@/components/chat/ComposerVariableCard";
+import MentionPicker from "@/components/chat/MentionPicker";
+import MentionChipsBar from "@/components/chat/MentionChipsBar";
+import type { MentionsController } from "@/components/chat/hooks/useMentions";
+import type { MentionReference } from "../../../shared/types";
 import type { PendingParameterSkill, PendingVariablePrompt } from "@/components/chat/assistant-ui/AssistantThread";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import {
@@ -37,6 +41,7 @@ import {
   unstable_useSlashCommandAdapter,
   type Unstable_SlashCommand,
   useAuiState,
+  useMessage,
 } from "@assistant-ui/react";
 import type { Unstable_TriggerItem } from "@assistant-ui/core";
 import {
@@ -55,6 +60,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { FC } from "react";
+import { Brain, Zap, FileText, GitBranch } from "lucide-react";
 
 export interface QuickAction {
   id: string;
@@ -68,6 +74,7 @@ interface ThreadProps {
   pendingParameterSkill?: PendingParameterSkill | null;
   pendingVariablePrompt?: PendingVariablePrompt | null;
   quickActions?: QuickAction[];
+  mentions?: MentionsController;
   onApplySkillParameters?: (values: Record<string, string>) => void;
   onCancelSkillParameters?: () => void;
   onApplyVariableValues?: (values: Record<string, string>) => void;
@@ -79,6 +86,7 @@ export const Thread: FC<ThreadProps> = ({
   pendingParameterSkill,
   pendingVariablePrompt,
   quickActions,
+  mentions,
   onApplySkillParameters,
   onCancelSkillParameters,
   onApplyVariableValues,
@@ -119,6 +127,7 @@ export const Thread: FC<ThreadProps> = ({
               pendingParameterSkill={pendingParameterSkill}
               pendingVariablePrompt={pendingVariablePrompt}
               quickActions={quickActions}
+              mentions={mentions}
               onApplySkillParameters={onApplySkillParameters}
               onCancelSkillParameters={onCancelSkillParameters}
               onApplyVariableValues={onApplyVariableValues}
@@ -235,6 +244,7 @@ const Composer: FC<{
   pendingParameterSkill?: PendingParameterSkill | null;
   pendingVariablePrompt?: PendingVariablePrompt | null;
   quickActions?: QuickAction[];
+  mentions?: MentionsController;
   onApplySkillParameters?: (values: Record<string, string>) => void;
   onCancelSkillParameters?: () => void;
   onApplyVariableValues?: (values: Record<string, string>) => void;
@@ -244,6 +254,7 @@ const Composer: FC<{
   pendingParameterSkill,
   pendingVariablePrompt,
   quickActions,
+  mentions,
   onApplySkillParameters,
   onCancelSkillParameters,
   onApplyVariableValues,
@@ -253,6 +264,42 @@ const Composer: FC<{
     commands: commands ?? [],
     removeOnExecute: true,
   });
+
+  const shellRef = useRef<HTMLDivElement>(null);
+  // 选中引用后的文本替换会派发一次 input 事件，跳过那次触发检测
+  const suppressNextInput = useRef(false);
+
+  const handleComposerInput = (e: React.FormEvent<HTMLDivElement>) => {
+    if (!mentions) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName !== 'TEXTAREA') return;
+    if (suppressNextInput.current) {
+      suppressNextInput.current = false;
+      return;
+    }
+    const textarea = target as HTMLTextAreaElement;
+    mentions.handleComposerInput(textarea.value, textarea.selectionStart ?? textarea.value.length);
+  };
+
+  const handlePick = (ref: MentionReference) => {
+    if (!mentions) return;
+    mentions.addChip(ref);
+    mentions.closePicker();
+
+    // 用原生 setter 替换 @token 为 @label，再派发 input 让 assistant-ui 同步
+    const textarea = shellRef.current?.querySelector('textarea');
+    if (!textarea || mentions.tokenStart < 0) return;
+    const text = textarea.value;
+    const start = mentions.tokenStart;
+    const next = `${text.slice(0, start)}@${ref.label} ${text.slice(start + 1 + mentions.query.length)}`;
+    const caret = start + ref.label.length + 2;
+    suppressNextInput.current = true;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    valueSetter?.call(textarea, next);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.setSelectionRange(caret, caret);
+    textarea.focus();
+  };
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
@@ -277,9 +324,20 @@ const Composer: FC<{
       <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
+            ref={shellRef}
+            onInputCapture={handleComposerInput}
             data-slot="aui_composer-shell"
-            className="flex w-full flex-col gap-2 rounded-[var(--composer-radius)] border bg-background p-[var(--composer-padding)] transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
+            className="relative flex w-full flex-col gap-2 rounded-[var(--composer-radius)] border bg-background p-[var(--composer-padding)] transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
           >
+            {mentions?.pickerOpen && (
+              <MentionPicker
+                query={mentions.query}
+                memories={mentions.memories}
+                skills={mentions.skills}
+                onPick={handlePick}
+                onClose={mentions.closePicker}
+              />
+            )}
             <ComposerAttachments />
             {quickActions && quickActions.length > 0 && (
               <div className="flex items-center gap-1.5 px-1">
@@ -296,6 +354,7 @@ const Composer: FC<{
                 ))}
               </div>
             )}
+            {mentions && <MentionChipsBar chips={mentions.chips} onRemove={mentions.removeChip} />}
             {pendingParameterSkill && (
               <ComposerParameterCard
                 skillName={pendingParameterSkill.skillName}
@@ -312,7 +371,7 @@ const Composer: FC<{
               />
             )}
             <ComposerPrimitive.Input
-              placeholder="Send a message... (type / for commands)"
+              placeholder="Send a message... (/ commands, @ references)"
               className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
               rows={1}
               autoFocus
@@ -517,8 +576,18 @@ const AssistantActionBar: FC = () => {
   );
 };
 
+const MENTION_BADGE_ICON: Record<string, typeof Brain> = {
+  memory: Brain,
+  skill: Zap,
+  git: GitBranch,
+  file: FileText,
+};
+
 const UserMessage: FC = () => {
   const createdAt = useAuiState((s) => s.message.createdAt);
+  const message = useMessage();
+  const references = (message.metadata?.custom as Record<string, unknown> | undefined)
+    ?.references as MentionReference[] | undefined;
 
   return (
     <MessagePrimitive.Root
@@ -536,6 +605,23 @@ const UserMessage: FC = () => {
           <MessagePrimitive.Parts />
         </div>
       </div>
+
+      {references && references.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {references.map((ref) => {
+            const Icon = MENTION_BADGE_ICON[ref.kind] ?? FileText;
+            return (
+              <span
+                key={`${ref.kind}-${ref.id}`}
+                className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-muted/70 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+              >
+                <Icon size={10} className="shrink-0" />
+                <span className="truncate">{ref.label}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex items-center gap-1">
         <BranchPicker

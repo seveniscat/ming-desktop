@@ -84,6 +84,10 @@ export function toThreadMessageLike(msg: Message): ThreadMessageLike {
       : [],
     id: `msg-${nextId++}`,
     createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+    // @ 引用经 metadata.custom 透传，UserMessage 据此渲染来源徽章
+    ...(msg.references?.length
+      ? { metadata: { custom: { references: msg.references } } }
+      : {}),
   };
 }
 

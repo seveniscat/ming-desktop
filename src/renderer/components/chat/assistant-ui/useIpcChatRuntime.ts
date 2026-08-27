@@ -4,6 +4,7 @@ import {
   type ExternalStoreAdapter,
 } from '@assistant-ui/react';
 import type { Message, ToolCallRecord } from '../types';
+import type { MentionReference } from '../../../../shared/types';
 import { applyToolStreamEventToMessages } from '../../../../shared/toolStream';
 import {
   toThreadMessageLike,
@@ -18,6 +19,7 @@ export interface SendChatMessageOptions {
   extraSkillIds?: string[];
   model?: string;
   conversationId?: string;
+  references?: MentionReference[];
   onConversationReady?: (conversationId: string) => void;
   onSettled?: () => void;
 }
@@ -49,6 +51,8 @@ interface UseIpcChatRuntimeOptions {
   onMemorySuggestion?: (suggestion: MemorySuggestionEvent) => void;
   /** Fires with the active conversation id when a send starts, and null when it settles */
   onActiveConversation?: (conversationId: string | null) => void;
+  /** composer 发送时取走当前 @ 引用（读并清空，仅 onNew 路径调用） */
+  getActiveReferences?: () => MentionReference[] | undefined;
 }
 
 /**
@@ -72,6 +76,7 @@ export function useIpcChatRuntime({
   activeSkillIds,
   onMemorySuggestion,
   onActiveConversation,
+  getActiveReferences,
 }: UseIpcChatRuntimeOptions) {
   // Track the active streaming conversation so IPC callbacks can filter
   const activeConvRef = useRef<string | null>(null);
@@ -142,6 +147,7 @@ export function useIpcChatRuntime({
       const userMsg: Message = {
         role: 'user',
         content: text,
+        references: options?.references,
         timestamp: new Date().toISOString(),
       };
       const assistantMsg = createEmptyAssistantMessage();
@@ -237,6 +243,7 @@ export function useIpcChatRuntime({
         text,
         model,
         skillIds.length > 0 ? skillIds : undefined,
+        options?.references,
       );
     },
     [conversationId, isRunning, setConversationId, setMessages, setIsRunning, selectedModel, activeSkillIds, onMemorySuggestion, onActiveConversation],
@@ -256,9 +263,9 @@ export function useIpcChatRuntime({
         }
       }
 
-      await sendMessage(text);
+      await sendMessage(text, { references: getActiveReferences?.() });
     },
-    [sendMessage],
+    [sendMessage, getActiveReferences],
   );
 
   // --- onCancel: abort the current stream ---
