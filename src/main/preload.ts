@@ -380,6 +380,7 @@ export interface ElectronAPI {
   git: {
     scanRepos: () => Promise<{ name: string; path: string }[]>;
     getUser: () => Promise<{ name: string; email: string }>;
+    getAllAuthors: () => Promise<{ name: string; email: string }[]>;
     heatmap: (authors?: string[]) => Promise<{
       data: Record<string, number>;
       stats: {
@@ -390,6 +391,7 @@ export interface ElectronAPI {
         mostActiveDay: string;
       };
     }>;
+    clearCache: () => Promise<{ success: boolean }>;
     getMyIdentities: () => Promise<{ name: string; email: string }[]>;
     setMyIdentities: (identities: { name: string; email: string }[]) => Promise<void>;
   };

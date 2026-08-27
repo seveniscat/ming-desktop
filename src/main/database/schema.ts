@@ -46,13 +46,6 @@ export function runMigrations(): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS plugin_configs (
-      plugin_id TEXT PRIMARY KEY,
-      config TEXT DEFAULT '{}',
-      enabled INTEGER DEFAULT 1,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
     CREATE TABLE IF NOT EXISTS skills (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -622,5 +615,17 @@ export function runMigrations(): void {
       // Column may already exist on fresh installs
     }
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration23Name);
+  }
+
+  // Migration: drop legacy plugin_configs table (plugin system was removed)
+  const migration24Name = 'drop-plugin-configs';
+  const applied24 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration24Name);
+  if (!applied24) {
+    try {
+      db.exec('DROP TABLE IF EXISTS plugin_configs');
+    } catch (error) {
+      console.error('Migration 24 failed:', error);
+    }
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration24Name);
   }
 }

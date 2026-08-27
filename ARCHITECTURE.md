@@ -1,316 +1,70 @@
 # Ming - 架构文档
 
-## 系统架构图
+单 Electron 应用，三层结构：渲染进程（React UI）↔ preload（类型化 IPC 桥）↔ 主进程（业务服务 + SQLite）。没有独立后端服务。
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         用户界面层                                │
-│  ┌──────────────┬──────────────┬──────────────┬──────────────┐ │
-│  │  Dashboard   │ Plugin Mgr   │  Agent Chat  │   Settings   │ │
-│  │  日报生成    │  插件管理    │  AI 对话     │   设置配置   │ │
-│  └──────────────┴──────────────┴──────────────┴──────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓ IPC
-┌─────────────────────────────────────────────────────────────────┐
-│                       Electron 主进程                            │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                  IPC 通信层 (preload)                    │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              ↓                                  │
-│  ┌────────────┬────────────┬────────────┬────────────┐        │
-│  │   插件     │   Agent    │   LLM      │   配置     │        │
-│  │  管理器    │  管理器    │  Provider  │  管理器    │        │
-│  │            │            │  管理器    │            │        │
-│  └────────────┴────────────┴────────────┴────────────┘        │
-│                              ↓                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    执行服务层                              │   │
-│  │  • 命令执行    • 脚本运行    • 进程管理                   │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                       系统资源层                                │
-│  ┌──────────┬──────────┬──────────┬──────────┐                 │
-│  │ 文件系统 │ 终端执行 │  网络    │  存储    │                 │
-│  │          │          │          │          │                 │
-│  └──────────┴──────────┴──────────┴──────────┘                 │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ 渲染进程 (React 18 + Vite + Tailwind + assistant-ui)          │
+│   NavRail 切换页面：WorkGround / Chat / Skills / MCP /        │
+│   Memories / Prompts / Providers / Tools / DevTools / Settings│
+└──────────────────────────┬───────────────────────────────────┘
+                           │ window.electronAPI.*（preload 类型化封装）
+┌──────────────────────────┴───────────────────────────────────┐
+│ 主进程 (Node)                                                 │
+│   ChatEngine/ChatService · LLMProviderManager · MCPManager    │
+│   SkillManager · MemoryManager · Git 缓存/日报 · ToolExecutor │
+│   ExecutorService · UpdateService · 调试日志                   │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ better-sqlite3
+┌──────────────────────────┴───────────────────────────────────┐
+│ SQLite（userData/ming-desktop.db，顺序命名迁移，当前 24 个）    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 核心模块说明
+## 主进程模块（src/main/）
 
-### 1. 插件系统 (PluginManager)
+| 模块 | 文件 | 职责 |
+|---|---|---|
+| 入口/IPC | `main.ts` | 窗口创建、服务初始化、全部 IPC handler 注册（git 扫描/热力图/技术栈分析内联于此） |
+| IPC 桥 | `preload.ts` | `contextBridge` 暴露 `electronAPI`；文件底部 `ElectronAPI` 接口是渲染层的唯一类型来源（`vite-env.d.ts` 引用它） |
+| 对话引擎 | `chat/ChatEngine.ts` | 流式对话 + 工具调用循环（最多 5 轮），系统提示词由 agent + skills + memories 组装 |
+| 会话编排 | `chat/ChatService.ts` | 会话消息持久化、流式事件转发、中止 |
+| LLM 层 | `llm/` | `LLMProviderManager`（provider CRUD、默认 provider、chatStreamWithTools）；`providers/registry.ts` 9 个预设 × 3 种模块类型（openai-compatible / anthropic / claude-agent-sdk）；双端结构化 tool 消息序列化；`CcSwitchImporter` 从 ~/.cc-switch 只读导入 |
+| MCP | `mcp/` | `MCPManager`（服务器 CRUD、连接、工具目录）+ `McpClient`（@modelcontextprotocol/sdk，stdio/SSE，协议日志）；MCP 工具以 `mcp__<server>__<tool>` 名称注入对话 |
+| 技能 | `skill/SkillManager.ts` | userData/skills 下文件夹式技能（SKILL.md frontmatter），CRUD、ZIP 导入、本地同步、IDE 打开 |
+| 记忆 | `services/MemoryManager.ts` | 长期记忆 CRUD + FTS5 检索 + 上下文格式化与 token 估算 |
+| 工具 | `tools/` | `ToolExecutor`（内置工具注册/执行/审批门控）、`ToolPersistenceManager`（工具注册表 + 用量统计）、8 个内置工具（含 daily-report） |
+| 执行 | `services/ExecutorService.ts` | 子进程命令/脚本执行（超时、输出捕获） |
+| Git | `services/GitCacheManager.ts` + `main.ts` 内联 | 仓库扫描、作者识别、提交聚合、热力图，SQLite 持久缓存 |
+| 其他 | `services/{ConfigManager,PromptTemplateManager,DebugLogService}`、`techstack/`、`updater/`、`database/` | 应用配置（electron-store）、提示词模板、调试环形缓冲、依赖指纹识别、自动更新、schema/迁移 |
+| coding（实验） | `coding/` | 自研模型无关 agentic loop + workspace 工具集（read/write/edit/glob/grep/bash），学习性质，未接入 UI |
 
-**职责**：
-- 发现和加载插件
-- 执行插件逻辑
-- 管理插件生命周期
+## 渲染层（src/renderer/）
 
-**核心方法**：
-- `loadBuiltInPlugins()` - 加载内置插件
-- `loadUserPlugins()` - 加载用户插件
-- `executePlugin()` - 执行插件
-- `togglePlugin()` - 切换插件状态
+`App.tsx` 以 tab 状态切换页面（NavRail）。主要页面：
 
-**插件接口**：
-```typescript
-interface Plugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  author: string;
-  category: string;
-  entry: string;          // 入口文件
-  configSchema?: any;     // 配置 schema
-  enabled: boolean;
-}
-```
+| 页面 | 组件 | 说明 |
+|---|---|---|
+| Home | `Welcome.tsx` | 问候 + git 身份/仓库概览 |
+| WorkGround | `Dashboard.tsx` | 日报中心：时间范围、多身份过滤、提交明细、热力图、报告历史；可一键转交 Chat 续写 |
+| Chat | `chat/ChatLayout.tsx` + `assistant-ui/*` | 基于 @assistant-ui/react 的会话式 UI：流式文本/思考、工具调用卡片、slash 命令（技能+模板）、变量填充卡 |
+| Skills / Prompts / Memories | 对应管理页 | 各子系统的 CRUD 与测试 |
+| MCP / MCP Debug | `pages/Mcp*.tsx` | 服务器管理、工具测试、协议日志实时查看 |
+| Providers | `LLMConfiguration.tsx` | provider CRUD、拉模型、测连接、cc-switch 导入 |
+| Tools / DevTools / Settings | — | 工具注册表、技术栈分析器、主题/更新 |
 
-**插件通信**：
-```
-UI → PluginManager.executePlugin() → 插件逻辑 → 返回结果 → UI
-```
+## IPC 概览
 
-### 2. Agent 系统 (AgentManager)
+通道常量在 `src/shared/ipc-channels.ts`（约 110 个），按命名空间分组：`agent` / `skill` / `prompt` / `llm` / `conversation`（含 5 个流式事件通道）/ `coding` / `mcp-server` / `mcp-debug` / `memory` / `tools` / `git` / `daily-report` / `config` / `executor` / `dialog` / `debug` / `update` / `techstack` / `platform`。请求走 `ipcMain.handle`，推送事件由服务经 `webContents.send` 发出、preload 返回取消订阅函数。
 
-**职责**：
-- 创建和管理 AI Agent
-- 处理 Agent 对话
-- 维护聊天历史
+## 数据库（src/main/database/schema.ts）
 
-**核心方法**：
-- `createAgent()` - 创建 Agent
-- `chat()` - 与 Agent 对话
-- `listAgents()` - 列出所有 Agent
-- `getChatHistory()` - 获取聊天历史
+24 个顺序命名迁移，主要表：`agents`、`conversations`、`chat_messages`（含 reasoning 与结构化 tool_calls 持久化）、`llm_providers`、`skills`、`prompt_templates`、`daily_reports`、`tools`、`user_identities`（"哪些 git 身份是我"）、`mcp_servers` / `mcp_tools` / `mcp_protocol_log`、`memories` + `memories_fts`（FTS5）、`git_commits_cache` / `git_heatmap_cache`。
 
-**Agent 结构**：
-```typescript
-interface Agent {
-  id: string;
-  name: string;
-  description: string;
-  model: string;          // 使用的 LLM 模型
-  systemPrompt: string;   // 系统提示词
-  tools: string[];        // 可用工具
-  createdAt: string;
-  updatedAt: string;
-}
-```
+## 关键数据流（日报）
 
-**对话流程**：
-```
-用户输入 → AgentManager.chat() → LLMProviderManager.chat() → LLM API → 返回 → 保存历史 → 显示
-```
+`Dashboard` → `daily-report:fetch` → `dailyReportTool`（解析 user_identities → 环境变量注入）→ `scripts/generate_daily_report.py`（递归发现仓库、git log 聚合、模板渲染）→ stdout 输出 `__OUTPUT_FILE__:` 标记 → 主进程读回 JSON 提交列表 → 缓存入 `git_commits_cache` → 渲染 + 可存 `daily_reports` → 可携带上下文转交 Chat。
 
-### 3. LLM Provider 管理器 (LLMProviderManager)
+## 设计文档
 
-**职责**：
-- 管理多个 LLM Provider
-- 统一对话接口
-- 处理不同 API 格式
-
-**支持的 Provider**：
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude 3)
-- 自定义端点
-- 本地模型
-
-**核心方法**：
-- `addProvider()` - 添加 Provider
-- `removeProvider()` - 移除 Provider
-- `chat()` - 发送对话请求
-- `listProviders()` - 列出所有 Provider
-
-**配置示例**：
-```typescript
-{
-  id: "provider-1",
-  name: "OpenAI GPT-4",
-  type: "openai",
-  apiKey: "sk-xxx",
-  baseURL: "https://api.openai.com/v1",
-  models: ["gpt-4", "gpt-3.5-turbo"],
-  enabled: true
-}
-```
-
-### 4. 执行服务 (ExecutorService)
-
-**职责**：
-- 执行 shell 命令
-- 运行脚本
-- 管理后台进程
-
-**核心方法**：
-- `executeCommand()` - 执行命令
-- `executeScript()` - 执行脚本
-- `executeCommandInBackground()` - 后台执行
-- `stopProcess()` - 停止进程
-
-**使用场景**：
-- Git 操作
-- Python 脚本执行
-- 文件系统操作
-- 系统命令
-
-### 5. 配置管理器 (ConfigManager)
-
-**职责**：
-- 管理应用配置
-- 持久化存储
-- 提供配置访问接口
-
-**存储方式**：
-- 使用 `electron-store` 进行本地存储
-- 位置：`~/Library/Application Support/ming-desktop/config.json`
-
-**核心方法**：
-- `get()` - 获取配置项
-- `set()` - 设置配置项
-- `getAll()` - 获取所有配置
-- `reset()` - 重置为默认
-
-## 日报生成插件架构
-
-```
-Dashboard (UI)
-    ↓
-PluginManager.executePlugin('daily-report', params)
-    ↓
-executeDailyReport()
-    ↓
-ExecutorService.executeCommand('python3 generate_daily_report.py')
-    ↓
-Python 脚本执行
-    ├─ 扫描 Git 仓库
-    ├─ 过滤有改动的仓库
-    ├─ 获取提交记录
-    ├─ 生成报告
-    └─ 保存到文件
-    ↓
-返回结果到 UI
-    ↓
-显示报告
-```
-
-## 数据流
-
-### 插件执行流程
-```
-1. 用户在 UI 点击"Generate Report"
-2. UI 调用 window.electronAPI.plugins.execute('daily-report', params)
-3. Preload 脚本通过 IPC 发送请求到主进程
-4. Main Process 收到 IPC 消息
-5. PluginManager.executePlugin() 处理请求
-6. 如果是日报插件，调用 executeDailyReport()
-7. ExecutorService 执行 Python 脚本
-8. 脚本生成报告并返回结果
-9. 结果通过 IPC 返回到 UI
-10. UI 显示报告
-```
-
-### Agent 对话流程
-```
-1. 用户在 Agent Chat 输入消息
-2. UI 调用 window.electronAPI.agents.chat(agentId, message)
-3. 通过 IPC 发送到主进程
-4. AgentManager.chat() 处理请求
-5. 构建消息历史（包括系统提示词）
-6. 调用 LLMProviderManager.chat()
-7. LLMProviderManager 调用对应的 LLM API
-8. API 返回响应
-9. 保存到聊天历史
-10. 通过 IPC 返回到 UI
-11. UI 显示响应
-```
-
-## 扩展指南
-
-### 添加新插件
-
-1. 在 `PluginManager.ts` 中定义插件：
-```typescript
-{
-  id: 'my-plugin',
-  name: 'My Plugin',
-  version: '1.0.0',
-  description: 'Plugin description',
-  category: 'utilities',
-  entry: 'my-plugin/index.js',
-  enabled: true
-}
-```
-
-2. 实现插件逻辑
-3. 在 UI 中添加插件界面
-
-### 添加新 Agent
-
-1. 在 `AgentManager.ts` 中定义默认 Agent
-2. 配置 systemPrompt 和 tools
-3. Agent 自动出现在 Agent Chat 中
-
-### 添加新 LLM Provider
-
-1. 在 UI Settings 中添加 Provider
-2. `LLMProviderManager` 会自动初始化
-3. Agent 可以选择使用哪个 Provider
-
-## 性能优化
-
-### 1. 快速过滤
-- 日报生成时先检查仓库是否有提交
-- 只处理有改动的仓库
-- 减少不必要的 git 操作
-
-### 2. 懒加载
-- 插件按需加载
-- Agent 对话历史按需加载
-- 配置文件异步读取
-
-### 3. 缓存
-- Git 仓库列表缓存
-- 插件列表缓存
-- LLM 响应缓存（可选）
-
-## 安全考虑
-
-### 1. IPC 通信
-- 使用 `contextIsolation: true`
-- 通过 `preload` 暴露最小 API
-- 不在渲染进程直接访问 Node.js API
-
-### 2. 命令执行
-- 限制可执行的命令范围
-- 验证用户输入
-- 设置超时时间
-
-### 3. API 密钥
-- 使用 `electron-store` 加密存储
-- 不在日志中显示
-- 支持用户自定义密钥
-
-## 未来扩展
-
-### 1. 插件市场
-- 在线插件商店
-- 插件评分和评论
-- 一键安装
-
-### 2. 工作流编排
-- 可视化工作流编辑器
-- 多 Agent 协作
-- 任务队列
-
-### 3. 数据持久化
-- SQLite 数据库
-- 历史记录查询
-- 数据导出
-
-### 4. 团队协作
-- 多用户支持
-- 权限管理
-- 共享配置
+每个功能先有 spec 再实施，见 `docs/plans/`（`*-design.md` 为设计，`*.md` 为任务清单）。

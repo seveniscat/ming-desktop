@@ -4,7 +4,6 @@ import Titlebar from './components/Titlebar';
 import Welcome from './components/Welcome';
 import Dashboard from './components/Dashboard';
 import AgentChat from './components/AgentChat';
-import CodingWorkspace from './components/CodingWorkspace';
 import SkillManager from './components/SkillManager';
 import PromptsPage from './pages/PromptsPage';
 import Settings from './components/Settings';
@@ -117,7 +116,6 @@ function App() {
                   onLaunchHandled={() => setChatLaunchRequest(null)}
                 />
               )}
-              {activeTab === 'coding' && <CodingWorkspace />}
               {activeTab === 'skills' && <SkillManager />}
               {activeTab === 'tools' && <ToolsPage />}
               {activeTab === 'mcp-servers' && <McpServersPage />}

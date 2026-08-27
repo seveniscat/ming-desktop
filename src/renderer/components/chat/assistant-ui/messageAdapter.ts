@@ -25,7 +25,7 @@ function parseThinkTags(content: string): { reasoning?: string; text: string } {
  */
 export function toThreadMessageLike(msg: Message): ThreadMessageLike {
   if (msg.role === 'assistant') {
-    const parts: ThreadMessageLike['content'] = [];
+    const parts: Array<Extract<ThreadMessageLike['content'], readonly unknown[]>[number]> = [];
 
     let reasoning = msg.reasoningContent;
     let textContent = msg.content;

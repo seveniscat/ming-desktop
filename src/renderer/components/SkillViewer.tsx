@@ -3,7 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Skill, SkillFile } from '../../shared/types';
 import { Button } from './ui/button';
-import { ArrowLeft, File, Folder, ExternalLink, FileText, ChevronDown } from 'lucide-react';
+import { ArrowLeft, File, Folder, ExternalLink, FileText } from 'lucide-react';
 import {
   Select,
   SelectContent,

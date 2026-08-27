@@ -1,172 +1,68 @@
-# Ming
+# Ming（铭）
 
-🚀 一个强大的 Electron 桌面应用，集成了 AI Agent、插件系统和开发工具。
+本地优先的个人 AI 工作台。数据全部存在你自己的机器上（SQLite），模型由你自己的 API Key 决定。
 
-## ✨ 特性
+Ming 围绕一条主线构建：**它知道你做了什么**——自动采集本地 Git 工作痕迹，随时生成日报/周报，并且这些工作数据可以在对话中直接引用。
 
-- **🤖 AI Agent 系统**：内置多个智能 Agent，支持对话式交互
-- **🔌 插件系统**：可扩展的插件架构，轻松添加新功能
-- **📊 日报生成**：自动从 Git 提交记录生成工作日报
-- **🎨 现代化 UI**：基于 React + TailwindCSS 的美观界面
-- **⚡ 高性能**：使用 Vite 构建，快速响应
-- **🔧 可配置**：灵活的配置系统，支持自定义
+## 核心能力
 
-## 🏗️ 架构
+- **Chat**：多模型流式对话（含思考过程展示、工具调用执行详情），支持技能注入、提示词变量、长期记忆建议
+- **WorkGround**：扫描本地 Git 仓库，聚合你的提交记录（多身份识别），生成日报/周报，附带提交热力图与连续提交统计，结果持久缓存
+- **Providers**：多 LLM Provider 管理（OpenAI / Anthropic / Qwen / DeepSeek / Groq / OpenRouter / Ollama / 自定义 / Claude Agent SDK），支持拉取模型列表、连接测试，以及**从 cc-switch 一键导入**现有配置
+- **Skills**：Claude Code 兼容的文件夹式技能（SKILL.md + 附属文件），支持编辑、ZIP 导入、本地同步、在 IDE 中打开
+- **MCP**：完整的 MCP 客户端（stdio + SSE），服务器管理、工具浏览/测试、协议级调试日志
+- **Memories**：长期记忆（FTS5 全文检索），分类管理、上下文预览、token 估算
+- **Prompts**：提示词模板库，`{variable}` 变量提取、触发词、在线测试
+- **DevTools**：技术栈分析器（拖入 .dmg/.app 或选择项目目录，识别框架与依赖）
+- **调试面板**：模型调用日志流、UI 卡顿上报、性能监视
 
-```
-Ming
-├── 主进程 (Main Process)
-│   ├── 插件管理器 (PluginManager)
-│   ├── Agent 管理器 (AgentManager)
-│   ├── LLM Provider 管理器 (LLMProviderManager)
-│   ├── 执行服务 (ExecutorService)
-│   └── 配置管理器 (ConfigManager)
-├── 渲染进程 (Renderer Process)
-│   ├── Dashboard - 仪表板和日报生成
-│   ├── Plugin Manager - 插件管理
-│   ├── Agent Chat - Agent 聊天
-│   └── Settings - 设置
-└── 插件 (Plugins)
-    └── Daily Report Generator
-```
-
-## 🚀 快速开始
+## 快速开始
 
 ### 前置要求
 
-- Node.js >= 18
-- npm >= 9
-- Python 3.x (用于日报生成脚本)
+- Node.js >= 18，npm >= 9
+- Python 3 + git（日报生成脚本依赖）
+- 一个 LLM API Key（OpenAI 兼容或 Anthropic 均可）
 
-### 安装依赖
-
-```bash
-cd ming-desktop
-npm install
-```
-
-### 开发模式
+### 安装与运行
 
 ```bash
+npm install --legacy-peer-deps   # 存在已知 peer 依赖冲突，必须带此参数
 npm run dev
 ```
 
-### 构建生产版本
+启动后到 **Providers** 页添加模型配置（如果你在用 cc-switch，点导入按钮一键迁移），然后即可使用 Chat 与 WorkGround。
+
+日报脚本也可以脱离 GUI 单独运行：
 
 ```bash
-npm run build
+REPO_PATHS=/path/to/git/repo DAILY_REPORT_OUTPUT_DIR=/tmp/ming-reports \
+  python3 scripts/generate_daily_report.py
 ```
 
-## 📦 核心功能
+### 常用命令
 
-### 1. 日报生成
+| 命令 | 说明 |
+|---|---|
+| `npm run dev` | 开发模式（electron-vite，主进程 + 渲染层热重载） |
+| `npm run build` | 生产构建到 `dist/` |
+| `npm run type-check` | TypeScript 全量检查（当前 0 错误） |
+| `npm test -- --run` | Vitest 单测（主进程服务与工具集） |
+| `npm run lint` | ESLint（仓库尚未提交 ESLint 配置，暂不可用） |
 
-自动从 Git 仓库生成工作日报：
+## 架构与文档
 
-- ✅ 自动扫描多个 Git 仓库
-- ✅ 快速过滤今天有改动的仓库
-- ✅ 支持所有分支（不会遗漏切换分支的提交）
-- ✅ 按作者过滤
-- ✅ 详细的提交统计
+- [ARCHITECTURE.md](ARCHITECTURE.md) — 模块划分、IPC 分组、数据库 schema
+- [DEVELOPMENT.md](DEVELOPMENT.md) — 开发环境、目录结构、测试与迁移指南
+- [QUICKSTART.md](QUICKSTART.md) — 面向使用者的 5 分钟上手
+- `docs/plans/` — 历次功能的设计与实施文档（spec 驱动开发）
+- `AGENTS.md` — Cloud 开发环境的注意事项
 
-配置路径：
-- `~/bzdev/bkdev`
-- `~/bzdev/exdev`
+## 路线图
 
-### 2. AI Agent
+- [ ] **@ 原语**：输入框支持 @记忆 / @技能 / @文件 / @Git工作数据，统一所有能力的上下文入口
+- [ ] **定时自动化**：日报/周报定时生成 + 本地通知/推送
+- [ ] **Git 上下文接入对话**："我这周干了什么"直接可问
+- [ ] **记忆对象化**：记忆可被 @ 引用、可置顶、带预算
 
-内置多个智能 Agent：
-
-- **Code Assistant**：代码助手，帮助编写、调试和审查代码
-- **Daily Reporter**：日报生成助手
-- **Research Assistant**：研究助手，帮助收集信息和创建文档
-
-### 3. 插件系统
-
-可扩展的插件架构：
-
-- 内置插件：日报生成、代码分析、网页抓取
-- 支持自定义插件
-- 插件启用/禁用
-- 插件配置管理
-
-### 4. LLM Provider
-
-支持多个 AI 模型提供商：
-
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude 3)
-- 自定义端点
-- 本地模型
-
-## 🔧 配置
-
-配置文件位置：`~/Library/Application Support/ming-desktop/config.json`
-
-### 工作路径配置
-
-```json
-{
-  "workPaths": {
-    "bzdevBkdev": "~/bzdev/bkdev",
-    "bzdevExdev": "~/bzdev/exdev"
-  }
-}
-```
-
-### LLM Provider 配置
-
-在应用的 Settings 页面添加 LLM Provider。
-
-## 📁 项目结构
-
-```
-ming-desktop/
-├── src/
-│   ├── main/              # 主进程代码
-│   │   ├── main.ts        # 主进程入口
-│   │   ├── preload.ts     # 预加载脚本
-│   │   ├── plugins/       # 插件系统
-│   │   ├── agent/         # Agent 管理
-│   │   ├── llm/           # LLM Provider
-│   │   ├── services/      # 核心服务
-│   │   └── utils/         # 工具函数
-│   ├── renderer/          # 渲染进程代码
-│   │   ├── components/    # React 组件
-│   │   ├── App.tsx        # 主应用
-│   │   └── main.tsx       # 入口文件
-│   └── shared/            # 共享类型定义
-├── scripts/               # Python 脚本
-│   └── generate_daily_report.py
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── tailwind.config.js
-```
-
-## 🎯 未来计划
-
-- [ ] 更多内置插件
-- [ ] Agent 工作流编排
-- [ ] 任务队列系统
-- [ ] Webhook 集成
-- [ ] 数据持久化（SQLite）
-- [ ] 插件市场
-- [ ] 团队协作功能
-- [ ] 移动端适配
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
-
-MIT License
-
-## 🙏 致谢
-
-- Electron
-- React
-- Vite
-- TailwindCSS
-- Lucide Icons
+> `src/main/coding/` 下有一套自研的模型无关 agentic coding loop（学习性质，含完整测试），当前未接入产品 UI，保留备用。

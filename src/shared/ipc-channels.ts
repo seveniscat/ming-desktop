@@ -40,23 +40,11 @@ export enum IPCChannels {
   // 执行服务相关
   EXECUTE_COMMAND = 'executor:execute-command',
   EXECUTE_SCRIPT = 'executor:execute-script',
-  EXECUTE_TERMINAL = 'executor:execute-terminal',
 
   // 配置相关
   CONFIG_GET = 'config:get',
   CONFIG_SET = 'config:set',
   CONFIG_GET_ALL = 'config:get-all',
-  CONFIG_RESET = 'config:reset',
-
-  // 文件系统相关
-  FS_READ_FILE = 'fs:read-file',
-  FS_WRITE_FILE = 'fs:write-file',
-  FS_READ_DIR = 'fs:read-dir',
-  FS_EXISTS = 'fs:exists',
-
-  // 系统相关
-  SYS_GET_OS_INFO = 'sys:get-os-info',
-  SYS_GET_VERSION = 'sys:get-version',
 
   // 对话框相关
   DIALOG_SHOW_OPEN_DIALOG = 'dialog:show-open-dialog',

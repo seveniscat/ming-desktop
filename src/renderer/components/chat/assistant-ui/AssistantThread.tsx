@@ -1,6 +1,6 @@
 import { Thread } from '@/components/assistant-ui/thread';
 import type { Unstable_SlashCommand } from '@assistant-ui/react';
-import type { SkillParameter } from '../../../shared/types';
+import type { SkillParameter } from '../../../../shared/types';
 import type { QuickAction } from '@/components/assistant-ui/thread';
 
 export interface PendingParameterSkill {
@@ -10,7 +10,7 @@ export interface PendingParameterSkill {
 }
 
 export interface PendingVariablePrompt {
-  templateId: string;
+  content: string;
   variables: string[];
 }
 

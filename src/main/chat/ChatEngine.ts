@@ -77,7 +77,7 @@ export class ChatEngine {
       let reasoningContent = '';
       let toolRounds = 0;
 
-      const isSdkProvider = provider?.type === 'claude-agent-sdk';
+      const isSdkProvider = provider?.moduleType === 'claude-agent-sdk';
 
       if (isSdkProvider) {
         const result = await this.llmManager.chatStreamWithTools(

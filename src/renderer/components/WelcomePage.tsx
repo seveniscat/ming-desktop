@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Bot, FileText, Plug, Settings, ArrowRight } from 'lucide-react';
+import { Card, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Bot, FileText, Plug, ArrowRight } from 'lucide-react';
 
 export interface WelcomePageProps {
   onComplete: () => void;
