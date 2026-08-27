@@ -1,4 +1,4 @@
-import type { PromptTemplate } from '../../../shared/types';
+import type { PromptTemplate, MentionReference } from '../../../shared/types';
 import type { ToolCallRecord } from '../../../shared/toolStream';
 
 export interface Agent {
@@ -23,6 +23,8 @@ export interface Message {
   content: string;
   reasoningContent?: string;
   toolCalls?: ToolCallRecord[];
+  /** 用户消息携带的 @ 引用（记忆/技能/文件/Git） */
+  references?: MentionReference[];
   timestamp?: string;
 }
 

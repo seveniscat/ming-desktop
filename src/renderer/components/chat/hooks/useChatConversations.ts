@@ -15,6 +15,7 @@ export function useChatConversations() {
         content: m.content,
         reasoningContent: m.reasoning_content || undefined,
         toolCalls: parsePersistedToolCalls(m.tool_calls ?? m.toolCalls),
+        references: m.references || undefined,
         timestamp: m.timestamp,
       }));
 

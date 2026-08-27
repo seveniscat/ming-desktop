@@ -1,7 +1,8 @@
 import type { WebContents } from 'electron';
 import { IPCChannels } from '../../shared/ipc-channels';
-import type { DebugModelCall } from '../../shared/types';
+import type { DebugModelCall, MentionReference } from '../../shared/types';
 import { ChatEngine, ChatRequest, ChatCallbacks, ToolStreamEvent } from './ChatEngine';
+import { MentionResolver } from './MentionResolver';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
 import { ToolExecutor } from '../tools/ToolExecutor';
 import { SkillManager } from '../skill/SkillManager';
@@ -25,6 +26,7 @@ export class ChatService {
     toolExecutor: ToolExecutor,
     private memoryManager: MemoryManager,
     private recordDebugEvent?: (event: DebugModelCall, webContents?: WebContents) => void,
+    mentionResolver?: MentionResolver,
   ) {
     this.chatEngine = new ChatEngine(
       llmManager,
@@ -37,13 +39,20 @@ export class ChatService {
       (conversationId: string, limit: number) => {
         const db = getDatabase();
         const rows = db.prepare(`
-          SELECT role, content, timestamp FROM chat_messages
+          SELECT role, content, mention_references, timestamp FROM chat_messages
           WHERE conversation_id = ? ORDER BY timestamp DESC LIMIT ?
         `).all(conversationId, limit) as any[];
-        return rows.reverse().map(r => ({ role: r.role, content: r.content, timestamp: r.timestamp }));
+        return rows.reverse().map(r => {
+          let references: MentionReference[] | undefined;
+          if (r.mention_references) {
+            try { references = JSON.parse(r.mention_references); } catch { /* 忽略损坏 JSON */ }
+          }
+          return { role: r.role, content: r.content, references, timestamp: r.timestamp };
+        });
       },
       (recentMessages: string[]) => memoryManager.formatMemoriesForPromptWithContext(recentMessages),
       (skillId: string) => skillManager.getSkillPrompt(skillId),
+      mentionResolver,
     );
   }
 
@@ -54,6 +63,7 @@ export class ChatService {
     model: string | undefined,
     webContents: WebContents,
     injectedSkills?: string[],
+    references?: MentionReference[],
   ): Promise<void> {
     const db = getDatabase();
 
@@ -67,8 +77,8 @@ export class ChatService {
     }
 
     db.prepare(`
-      INSERT INTO chat_messages (agent_id, role, content, conversation_id) VALUES (?, 'user', ?, ?)
-    `).run(agentId || null, userMessage, conversationId);
+      INSERT INTO chat_messages (agent_id, role, content, mention_references, conversation_id) VALUES (?, 'user', ?, ?, ?)
+    `).run(agentId || null, userMessage, references?.length ? JSON.stringify(references) : null, conversationId);
 
     const abortController = new AbortController();
     this.activeStreams.set(conversationId, abortController);
@@ -120,6 +130,7 @@ export class ChatService {
         agentId: agentId || undefined,
         model,
         injectedSkills,
+        references,
       };
 
       await this.chatEngine.chatStream(req, callbacks, abortController.signal);

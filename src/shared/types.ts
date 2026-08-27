@@ -111,6 +111,8 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   /** user 消息：回填给模型的结构化工具结果 */
   toolResults?: CodingToolResult[];
+  /** user 消息：携带的 @ 引用（仅持久化/展示用，模型侧由 system prompt 的引用块承载） */
+  references?: MentionReference[];
 }
 
 export interface Conversation {

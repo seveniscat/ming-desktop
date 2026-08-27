@@ -118,3 +118,41 @@ export class MentionResolver {
     return params;
   }
 }
+
+/** 所有引用块合计注入预算（字符） */
+export const REFERENCE_CONTEXT_BUDGET = 24 * 1024;
+
+/**
+ * 把解析结果组装成注入 system prompt 的 <referenced-context> 块。
+ * 超预算时从后往前截断：靠前的引用优先保真，耗尽预算的引用以占位符说明。
+ */
+export function buildReferenceBlock(
+  resolved: ResolvedContext[],
+  budget: number = REFERENCE_CONTEXT_BUDGET,
+): string | null {
+  if (resolved.length === 0) return null;
+
+  const open = '<referenced-context>';
+  const close = '</referenced-context>';
+  const sections: string[] = [];
+  let used = open.length + close.length + 2;
+
+  for (const ctx of resolved) {
+    const title = `### @${ctx.ref.label}`;
+    const remaining = budget - used - title.length - 1;
+
+    if (remaining <= 0) {
+      sections.push(`${title}\n[超出上下文预算，未注入]`);
+      continue;
+    }
+    if (ctx.text.length > remaining) {
+      sections.push(`${title}\n${ctx.text.slice(0, remaining)}\n[已截断]`);
+      used += title.length + remaining + 20;
+    } else {
+      sections.push(`${title}\n${ctx.text}`);
+      used += title.length + ctx.text.length + 2;
+    }
+  }
+
+  return `${open}\n${sections.join('\n\n')}\n${close}`;
+}

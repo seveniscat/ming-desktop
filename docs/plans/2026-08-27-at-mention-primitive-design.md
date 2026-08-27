@@ -130,8 +130,8 @@ repo-a (12 commits) ...
 
 1. **类型与迁移**（已完成，commit 待补）：`MentionReference` 类型 + 迁移 25 + `ChatRequest.references`
 2. **MentionResolver**（已完成）：14 个单测覆盖四类来源、截断、失败不阻塞、git 上限与参数容错
-3. **ChatEngine 注入**：buildContext 引用块单测（含总预算截断）
-4. **IPC 链路**：main.ts/preload/ChatService 透传 + `ElectronAPI` 接口同步 + 持久化往返
+3. **ChatEngine 注入**（已完成）：buildContext 异步化，`<referenced-context>` 块注入 + 24k 预算截断单测；@技能 引用与 injectedSkills 合并去重；额外实现**多轮在场**——从最近历史用户消息回收引用（去重，取最近 8 条）
+4. **IPC 链路**（已完成）：main.ts/preload/ChatService 透传 + `ElectronAPI` 接口同步 + mention_references 持久化往返 + 消息列表返回 references；@Git 适配器复用日报管线（GitCacheManager 缓存 + 身份解析）
 5. **useMentions + Picker**：触发/过滤/选择/移除状态机；文件路径输入；Git 时间段选择
 6. **ChipsBar + 气泡标签**：发送链路接线 + messageAdapter 来源徽章
 7. **打磨**：FTS 搜索记忆、最近文件引用记忆、空态文案

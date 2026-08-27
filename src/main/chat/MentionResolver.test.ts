@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { MentionResolver } from './MentionResolver';
+import { MentionResolver, buildReferenceBlock } from './MentionResolver';
 import { MentionReference, GitRefParams } from '@shared/types';
 
 // fake 依赖：记忆/技能查表，git 按需注入
@@ -172,5 +172,55 @@ describe('MentionResolver', () => {
 
   it('empty input resolves to empty output', async () => {
     expect(await makeResolver().resolve([])).toEqual([]);
+  });
+});
+
+describe('buildReferenceBlock', () => {
+  const ref = (kind: MentionReference['kind'], label: string): MentionReference => ({
+    kind, id: 'x', label,
+  });
+
+  it('returns null for empty input', () => {
+    expect(buildReferenceBlock([])).toBeNull();
+  });
+
+  it('wraps each resolved context as a ### section inside referenced-context tags', () => {
+    const block = buildReferenceBlock([
+      { ref: ref('memory', '周报偏好'), text: '偏好中文' },
+      { ref: ref('git', '本周提交'), text: 'repo-a (2 commits)' },
+    ]);
+    expect(block).toContain('<referenced-context>');
+    expect(block).toContain('</referenced-context>');
+    expect(block).toContain('### @周报偏好\n偏好中文');
+    expect(block).toContain('### @本周提交\nrepo-a (2 commits)');
+    // 顺序保持
+    expect(block!.indexOf('周报偏好')).toBeLessThan(block!.indexOf('本周提交'));
+  });
+
+  it('keeps the first section intact and truncates from the back when over budget', () => {
+    const block = buildReferenceBlock(
+      [
+        { ref: ref('memory', '甲'), text: 'A'.repeat(100) },
+        { ref: ref('file', '乙'), text: 'B'.repeat(100) },
+      ],
+      160, // 只够装下第一段 + 第二段的一部分
+    );
+    expect(block).toContain('A'.repeat(100)); // 第一段完整
+    expect(block).toContain('[已截断]'); // 第二段被截
+    expect(block).not.toContain('B'.repeat(100));
+  });
+
+  it('drops later sections with a placeholder once the budget is exhausted', () => {
+    const block = buildReferenceBlock(
+      [
+        { ref: ref('memory', '甲'), text: 'A'.repeat(200) },
+        { ref: ref('file', '乙'), text: 'B'.repeat(10) },
+        { ref: ref('git', '丙'), text: 'C'.repeat(10) },
+      ],
+      120, // 第一段截断后预算耗尽
+    );
+    expect(block).toContain('[已截断]');
+    expect(block).toContain('[超出上下文预算，未注入]');
+    expect(block).not.toContain('CCCC');
   });
 });

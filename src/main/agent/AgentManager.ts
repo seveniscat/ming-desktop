@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { Agent, AgentConfig, ChatMessage, Conversation, Skill } from '../../shared/types';
+import { Agent, AgentConfig, ChatMessage, Conversation, Skill, MentionReference } from '../../shared/types';
 import { Logger } from '../utils/Logger';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
 import { ToolExecutor } from '../tools/ToolExecutor';
@@ -318,19 +318,30 @@ export class AgentManager extends EventEmitter {
     }));
   }
 
-  getConversationMessages(conversationId: string): (ChatMessage & { reasoning_content?: string; tool_calls?: string })[] {
+  getConversationMessages(conversationId: string): (ChatMessage & { reasoning_content?: string; tool_calls?: string; references?: MentionReference[] })[] {
     const db = getDatabase();
     const rows = db.prepare(`
-      SELECT role, content, reasoning_content, tool_calls, timestamp FROM chat_messages
+      SELECT role, content, reasoning_content, tool_calls, mention_references, timestamp FROM chat_messages
       WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 100
     `).all(conversationId) as any[];
-    return rows.map(r => ({
-      role: r.role,
-      content: r.content,
-      reasoning_content: r.reasoning_content || undefined,
-      tool_calls: r.tool_calls || undefined,
-      timestamp: r.timestamp
-    }));
+    return rows.map(r => {
+      let references: MentionReference[] | undefined;
+      if (r.mention_references) {
+        try {
+          references = JSON.parse(r.mention_references);
+        } catch {
+          // 损坏的 JSON 忽略，不影响消息展示
+        }
+      }
+      return {
+        role: r.role,
+        content: r.content,
+        reasoning_content: r.reasoning_content || undefined,
+        tool_calls: r.tool_calls || undefined,
+        references,
+        timestamp: r.timestamp
+      };
+    });
   }
 
   deleteConversation(conversationId: string): void {

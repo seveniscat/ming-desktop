@@ -2,6 +2,7 @@ import { ChatMessage, Agent, Skill, ToolDefinition, ToolCall, DebugModelCall, Me
 import { LLMProviderManager } from '../llm/LLMProviderManager';
 import { ToolExecutor } from '../tools/ToolExecutor';
 import { Logger } from '../utils/Logger';
+import { MentionResolver, buildReferenceBlock } from './MentionResolver';
 
 export interface ToolStreamEvent {
   event: 'tool_start' | 'tool_result' | 'tool_error' | 'context';
@@ -52,6 +53,7 @@ export class ChatEngine {
     private loadHistory: (conversationId: string, limit: number) => ChatMessage[],
     private getMemoryPrompt: (recentMessages: string[]) => string,
     private getSkillPrompt?: (skillId: string) => string,
+    private mentionResolver?: MentionResolver,
   ) {}
 
   async chatStream(
@@ -60,7 +62,7 @@ export class ChatEngine {
     signal: AbortSignal,
   ): Promise<void> {
     try {
-      const { messages, toolDefs } = this.buildContext(req);
+      const { messages, toolDefs } = await this.buildContext(req);
 
       callbacks.onToolEvent({
         event: 'context',
@@ -136,11 +138,17 @@ export class ChatEngine {
     }
   }
 
-  private buildContext(req: ChatRequest): { messages: ChatMessage[]; toolDefs: ToolDefinition[] } {
+  private async buildContext(req: ChatRequest): Promise<{ messages: ChatMessage[]; toolDefs: ToolDefinition[] }> {
     const agent = req.agentId ? this.loadAgent(req.agentId) : undefined;
+    const references = req.references ?? [];
 
     let systemContent: string;
-    const injectedSkills = req.injectedSkills?.length ? this.loadSkills(req.injectedSkills) : [];
+    // @技能 引用与 slash 注入共用一条通道，合并去重，避免二次注入
+    const skillIds = [...new Set([
+      ...(req.injectedSkills ?? []),
+      ...references.filter(r => r.kind === 'skill').map(r => r.id),
+    ])];
+    const injectedSkills = skillIds.length ? this.loadSkills(skillIds) : [];
     const agentSkills = !injectedSkills.length && agent?.skills?.length ? this.loadSkills(agent.skills) : [];
     const activeSkills = injectedSkills.length ? injectedSkills : agentSkills;
 
@@ -173,6 +181,28 @@ export class ChatEngine {
     if (memoryPrompt) {
       systemContent += '\n' + memoryPrompt;
     }
+
+    // @引用（技能已并入上方注入通道）解析为 <referenced-context> 块。
+    // 除本次发送携带的引用外，也回收最近历史用户消息的引用（去重），
+    // 保证多轮追问中引用上下文持续在场。
+    const historyRefs = history
+      .filter(m => m.role === 'user' && m.references?.length)
+      .flatMap(m => m.references!)
+      .slice(-8);
+    const nonSkillRefs = [...references, ...historyRefs]
+      .filter(r => r.kind !== 'skill')
+      .filter((r, i, arr) => arr.findIndex(x => x.kind === r.kind && x.id === r.id) === i);
+    if (this.mentionResolver && nonSkillRefs.length > 0) {
+      try {
+        const resolved = await this.mentionResolver.resolve(nonSkillRefs);
+        const block = buildReferenceBlock(resolved);
+        if (block) systemContent += '\n\n' + block;
+      } catch (error) {
+        // 引用注入失败不应中断对话
+        Logger.warn('Mention context injection failed:', error);
+      }
+    }
+
     const messages: ChatMessage[] = [
       { role: 'system', content: systemContent },
       ...history,

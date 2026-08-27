@@ -29,13 +29,14 @@ import { initializeDatabase, closeDatabase, getDatabase } from './database/conne
 import { runMigrations } from './database/schema';
 import { migrateFromStore } from './database/migrate-from-store';
 import { GitCacheManager } from './services/GitCacheManager';
+import { MentionResolver, type MentionCommit } from './chat/MentionResolver';
 import { scanBundles, type DetectedLibrary } from './techstack/bundleScanner';
 import { ChatService } from './chat/ChatService';
 import { CodingService } from './coding/CodingService';
 import { MCPManager } from './mcp/MCPManager';
 import { MemoryManager } from './services/MemoryManager';
 import { UpdateService } from './updater/UpdateService';
-import type { DebugLogEntry, DebugModelCall } from '../shared/types';
+import type { DebugLogEntry, DebugModelCall, MentionReference, GitRefParams } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
 let debugWindow: BrowserWindow | null = null;
@@ -202,7 +203,40 @@ async function initializeServices(): Promise<void> {
   );
   await agentManager.initialize();
 
-  chatService = new ChatService(agentManager, skillManager, llmManager, toolExecutor, memoryManager, recordModelDebug);
+  // @ 引用解析器：记忆/技能查管理器，Git 复用日报采集管线（含持久缓存与身份过滤）
+  const adaptCommit = (c: any): MentionCommit => ({
+    hash: c.hash, date: c.date, repo: c.repo, subject: c.message ?? c.subject ?? '',
+  });
+  const getGitCommitsForMention = async (params: GitRefParams): Promise<{ commits: MentionCommit[]; repos: string[] }> => {
+    const toolParams: Record<string, string> = { timeRange: params.timeRange };
+    if (params.since) toolParams.sinceDate = params.since;
+    if (params.until) toolParams.untilDate = params.until;
+
+    const cacheKey = JSON.stringify(toolParams);
+    const cached = GitCacheManager.loadCommitsCache(cacheKey);
+    if (cached?.commits?.length) {
+      const commits = cached.commits.map(adaptCommit);
+      return { commits, repos: [...new Set(commits.map(c => c.repo))] };
+    }
+
+    const raw = JSON.parse(await toolExecutor.executeByName('daily-report', toolParams));
+    const commits: any[] = raw.commits || [];
+    if (commits.length > 0) {
+      GitCacheManager.saveCommitsCache(cacheKey, commits, {
+        totalCommits: commits.length,
+        totalRepos: new Set(commits.map((c: any) => c.repo)).size,
+      });
+    }
+    const adapted = commits.map(adaptCommit);
+    return { commits: adapted, repos: [...new Set(adapted.map(c => c.repo))] };
+  };
+  const mentionResolver = new MentionResolver({
+    getMemory: (id) => memoryManager.get(id),
+    getSkillPrompt: (skillId) => skillManager.getSkillPrompt(skillId),
+    getGitCommits: getGitCommitsForMention,
+  });
+
+  chatService = new ChatService(agentManager, skillManager, llmManager, toolExecutor, memoryManager, recordModelDebug, mentionResolver);
 
   codingService = new CodingService(llmManager, executorService);
 
@@ -349,9 +383,9 @@ function setupIPCHandlers(): void {
     return agentManager.renameConversation(conversationId, title);
   });
 
-  ipcMain.on(IPCChannels.CONVERSATION_CHAT, (event, conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[]) => {
+  ipcMain.on(IPCChannels.CONVERSATION_CHAT, (event, conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[], references?: MentionReference[]) => {
     const webContents = event.sender;
-    chatService.handleChat(conversationId, agentId || null, message, model, webContents, injectedSkills);
+    chatService.handleChat(conversationId, agentId || null, message, model, webContents, injectedSkills, references);
   });
 
   ipcMain.on(IPCChannels.CONVERSATION_CHAT_ABORT, (_, conversationId: string) => {

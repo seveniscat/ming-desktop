@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPCChannels } from '../shared/ipc-channels';
+import type { MentionReference } from '../shared/types';
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -55,8 +56,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     rename: (conversationId: string, title: string) =>
       ipcRenderer.invoke(IPCChannels.CONVERSATION_RENAME, conversationId, title),
     // Changed: fire-and-forget, response comes via stream events
-    chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[]) => {
-      ipcRenderer.send(IPCChannels.CONVERSATION_CHAT, conversationId, agentId, message, model, injectedSkills);
+    chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[], references?: MentionReference[]) => {
+      ipcRenderer.send(IPCChannels.CONVERSATION_CHAT, conversationId, agentId, message, model, injectedSkills, references);
     },
     abort: (conversationId: string) => {
       ipcRenderer.send(IPCChannels.CONVERSATION_CHAT_ABORT, conversationId);
@@ -325,7 +326,7 @@ export interface ElectronAPI {
     messages: (conversationId: string) => Promise<any[]>;
     delete: (conversationId: string) => Promise<void>;
     rename: (conversationId: string, title: string) => Promise<void>;
-    chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[]) => void;
+    chat: (conversationId: string, agentId: string | null, message: string, model?: string, injectedSkills?: string[], references?: MentionReference[]) => void;
     abort: (conversationId: string) => void;
     onStreamChunk: (callback: (data: any) => void) => () => void;
     onStreamReasoningChunk: (callback: (data: any) => void) => () => void;
