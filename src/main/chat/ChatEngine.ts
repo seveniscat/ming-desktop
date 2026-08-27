@@ -1,4 +1,4 @@
-import { ChatMessage, Agent, Skill, ToolDefinition, ToolCall, DebugModelCall } from '../../shared/types';
+import { ChatMessage, Agent, Skill, ToolDefinition, ToolCall, DebugModelCall, MentionReference } from '../../shared/types';
 import { LLMProviderManager } from '../llm/LLMProviderManager';
 import { ToolExecutor } from '../tools/ToolExecutor';
 import { Logger } from '../utils/Logger';
@@ -20,6 +20,8 @@ export interface ChatRequest {
   agentId?: string;
   injectedSkills?: string[];
   model?: string;
+  /** 本次发送携带的 @ 引用（记忆/技能/文件/Git），由 buildContext 解析注入 */
+  references?: MentionReference[];
 }
 
 export interface ChatResult {

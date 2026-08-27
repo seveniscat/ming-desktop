@@ -628,4 +628,16 @@ export function runMigrations(): void {
     }
     db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration24Name);
   }
+
+  // Migration: persist @-mention references on chat messages
+  const migration25Name = 'add-chat-message-mention-references';
+  const applied25 = db.prepare('SELECT 1 FROM _migrations WHERE name = ?').get(migration25Name);
+  if (!applied25) {
+    try {
+      db.exec('ALTER TABLE chat_messages ADD COLUMN mention_references TEXT DEFAULT NULL');
+    } catch {
+      // Column may already exist on fresh installs
+    }
+    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration25Name);
+  }
 }

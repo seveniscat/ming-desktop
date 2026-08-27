@@ -373,3 +373,23 @@ export interface DebugLogEntry {
   duration?: number;
   data?: Record<string, any>;
 }
+
+// @ 引用（Mention）相关类型
+export type MentionKind = 'memory' | 'skill' | 'file' | 'git';
+
+export interface GitRefParams {
+  timeRange: 'today' | 'yesterday' | 'week' | 'custom';
+  /** custom 时必填，YYYY-MM-DD */
+  since?: string;
+  until?: string;
+}
+
+export interface MentionReference {
+  kind: MentionKind;
+  /** memory/skill 为记录 id；file 为绝对路径；git 固定为 'commits' */
+  id: string;
+  /** 展示名：记忆标题 / 技能名 / 文件名 / "本周提交" */
+  label: string;
+  /** kind 特有参数，git 用 timeRange/since/until */
+  params?: Record<string, string>;
+}

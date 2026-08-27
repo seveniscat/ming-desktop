@@ -49,7 +49,7 @@ export interface MentionReference {
 ### 3.2 传递与持久化
 
 - IPC：`conversation:chat` 增加尾参 `references?: MentionReference[]`（`preload.ts` 的 `conversations.chat` 签名同步，注意更新文件底部 `ElectronAPI` 接口——这是 renderer 类型的唯一来源）。
-- 持久化：迁移 25 为 `chat_messages` 增加 `references TEXT DEFAULT NULL` 列（JSON 数组），与现有 `tool_calls` 列的处理方式一致（`database/schema.ts` 末尾追加，防重入）。
+- 持久化：迁移 25 为 `chat_messages` 增加 `mention_references TEXT DEFAULT NULL` 列（JSON 数组；列名避开 SQLite 关键字 REFERENCES），与现有 `tool_calls` 列的处理方式一致（`database/schema.ts` 末尾追加，防重入）。
 - 消息文本本体保持用户可读的 `@label` 字样，结构化引用走 `references` 列；历史渲染优先用结构化数据画来源标签。
 
 ## 4. 交互设计
@@ -114,7 +114,7 @@ repo-a (12 commits) ...
 |---|---|
 | `src/shared/types.ts` | `MentionReference` / `MentionKind` / `GitRefParams` |
 | `src/shared/ipc-channels.ts` | 无新通道（复用 `conversation:chat`） |
-| `src/main/database/schema.ts` | 迁移 25：`chat_messages.references` 列 |
+| `src/main/database/schema.ts` | 迁移 25：`chat_messages.mention_references` 列 |
 | `src/main/chat/MentionResolver.ts` | 新建（含单测） |
 | `src/main/chat/ChatEngine.ts` | `ChatRequest` 加 `references`；`buildContext` 追加引用块 |
 | `src/main/chat/ChatService.ts` | 透传 references 并持久化到消息 |
@@ -128,8 +128,8 @@ repo-a (12 commits) ...
 
 ## 7. 任务分解（建议 TDD，每任务可独立合入）
 
-1. **类型与迁移**：`MentionReference` 类型 + 迁移 25 + `ChatRequest.references`（type-check 通过）
-2. **MentionResolver**：fake 依赖单测四类来源（含截断、失败不阻塞、git 上限）
+1. **类型与迁移**（已完成，commit 待补）：`MentionReference` 类型 + 迁移 25 + `ChatRequest.references`
+2. **MentionResolver**（已完成）：14 个单测覆盖四类来源、截断、失败不阻塞、git 上限与参数容错
 3. **ChatEngine 注入**：buildContext 引用块单测（含总预算截断）
 4. **IPC 链路**：main.ts/preload/ChatService 透传 + `ElectronAPI` 接口同步 + 持久化往返
 5. **useMentions + Picker**：触发/过滤/选择/移除状态机；文件路径输入；Git 时间段选择
